@@ -157,9 +157,11 @@ Staff use a separate, unpublished grading tool and their own tests, along with t
 
 | Problem | Points | Evidence |
 | --- | --- | --- |
-| Reward model | 40 | Ranking-loss correctness; validation/test accuracy, training settings, curves and diagnostics |
-| PPO | 40 | GAE/PPO/entropy correctness; reproducible training curves and analysis |
-| Evaluation | 20 | Held-out comparison, saved samples/configurations, and substantive analysis |
+| Reward model | 40 = 20 automatic + 20 TA review | Ranking-loss correctness; validation/test accuracy, training settings, curves and diagnostics |
+| PPO | 40 = 20 automatic + 20 TA review | GAE/PPO/entropy correctness; reproducible training curves and analysis |
+| Evaluation | 20 TA review | Held-out comparison, saved samples/configurations, and substantive analysis |
+
+The assignment has **40 automatic points**: reward loss 20, GAE 10, PPO 5, and entropy 5. Staff run the unpublished grader against submitted source; local self-check results do not determine the official score. The other **60 points** cover the experiments, evidence, and analysis. Passing the public tests does not automatically earn the manual-review points.
 
 Reward improvement is an experimental outcome to analyze, not a required fixed transition such as −0.5 to +0.5. Correctness and an honest explanation matter when reward does not improve. Do not fabricate or selectively omit failed runs.
 
