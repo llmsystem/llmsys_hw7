@@ -9,10 +9,10 @@ import pytest
 from transformers import AutoTokenizer
 
 # Add src to path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from reward_model import create_reward_model, RewardModelTrainer, save_reward_model, load_reward_model
-from config import get_config
+from src.reward_model import create_reward_model, RewardModelTrainer, save_reward_model, load_reward_model
+from src.config import get_config
 
 
 class TestRewardModel:
@@ -228,7 +228,7 @@ class TestRewardModelIntegration:
                 initial_loss = metrics['loss']
             
             # Check that metrics are reasonable
-            assert metrics['loss'] > 0
+            assert metrics['loss'] >= 0
             assert 0 <= metrics['accuracy'] <= 1
             assert isinstance(metrics['chosen_reward_mean'], float)
             assert isinstance(metrics['rejected_reward_mean'], float)
@@ -237,7 +237,7 @@ class TestRewardModelIntegration:
         final_metrics = trainer.train_step(training_batches[0])
         
         # At minimum, check that training doesn't crash and produces valid outputs
-        assert final_metrics['loss'] > 0
+        assert final_metrics['loss'] >= 0
         assert 0 <= final_metrics['accuracy'] <= 1
     
     def test_batch_size_handling(self):
@@ -283,5 +283,20 @@ class TestRewardModelIntegration:
         assert all(torch.isfinite(torch.tensor(r)) for r in rewards)
 
 
-if __name__ == "__main__":
-    pytest.main([__file__])
+def test_margin_ranking_loss_contract():
+    from types import SimpleNamespace
+    chosen = torch.tensor([2., 0.], requires_grad=True)
+    rejected = torch.tensor([0., .5], requires_grad=True)
+    class Scores:
+        def __call__(self, input_ids, **kwargs):
+            return SimpleNamespace(rewards=input_ids)
+    trainer = object.__new__(RewardModelTrainer)
+    trainer.model = Scores()
+    trainer.loss_fn = torch.nn.MarginRankingLoss(margin=1.)
+    loss, a, b = trainer.compute_loss({'chosen': {'input_ids': chosen}, 'rejected': {'input_ids': rejected}})
+    torch.testing.assert_close(a, chosen)
+    torch.testing.assert_close(b, rejected)
+    torch.testing.assert_close(loss, torch.tensor(.75))
+    loss.backward()
+    torch.testing.assert_close(chosen.grad, torch.tensor([0., -.5]))
+    torch.testing.assert_close(rejected.grad, torch.tensor([0., .5]))

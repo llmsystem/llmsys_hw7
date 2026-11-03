@@ -1,5 +1,5 @@
 """
-Utility functions for Assignment 7 - VERL RLHF Training.
+Utility functions for Assignment 7 - RLHF Training.
 This module contains helper functions for data processing, logging, and evaluation.
 """
 
@@ -9,6 +9,8 @@ import random
 import logging
 import numpy as np
 import torch
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from typing import List, Dict, Any, Tuple, Optional
 from pathlib import Path
@@ -107,105 +109,6 @@ def save_json_data(data: List[Dict[str, Any]], file_path: str) -> None:
         json.dump(data, f, indent=2, ensure_ascii=False)
     
     logger.info(f"Saved {len(data)} entries to {file_path}")
-
-
-def create_sample_data_files(data_dir: str) -> None:
-    """
-    Create sample data files for the assignment.
-    
-    Args:
-        data_dir: Directory to create data files in
-    """
-    import subprocess
-    import sys
-    
-    # Check if data files already exist
-    required_files = ["train_prompts.json", "eval_prompts.json", "preference_data.json"]
-    missing_files = []
-    
-    for filename in required_files:
-        filepath = os.path.join(data_dir, filename)
-        if not os.path.exists(filepath):
-            missing_files.append(filename)
-    
-    if not missing_files:
-        logger.info(f"All data files already exist in {data_dir}")
-        return
-    
-    logger.info(f"Creating missing data files: {', '.join(missing_files)}")
-    
-    # Try to run the data preparation script
-    script_path = os.path.join(os.path.dirname(__file__), '..', 'scripts', 'prepare_data.py')
-    
-    if os.path.exists(script_path):
-        try:
-            logger.info("Downloading and preparing Anthropic HH-RLHF dataset...")
-            result = subprocess.run(
-                [sys.executable, script_path, '--output_dir', data_dir, '--max_samples', '200'],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            logger.info("Data preparation completed successfully")
-        except subprocess.CalledProcessError as e:
-            logger.warning(f"Data preparation script failed: {e}")
-            logger.warning("Falling back to basic sample data")
-            _create_basic_sample_data(data_dir)
-    else:
-        logger.warning("Data preparation script not found, creating basic sample data")
-        _create_basic_sample_data(data_dir)
-
-
-def _create_basic_sample_data(data_dir: str) -> None:
-    """
-    Create basic sample data as fallback.
-    
-    Args:
-        data_dir: Directory to create data files in
-    """
-    os.makedirs(data_dir, exist_ok=True)
-    
-    # Basic training prompts in HH-RLHF format
-    train_prompts = [
-        {"prompt": "Human: How can I be more productive at work?\n\nAssistant:"},
-        {"prompt": "Human: What's the best way to learn a new programming language?\n\nAssistant:"},
-        {"prompt": "Human: How do I maintain a healthy work-life balance?\n\nAssistant:"},
-        {"prompt": "Human: What are some effective study techniques for students?\n\nAssistant:"},
-        {"prompt": "Human: How can I improve my communication skills?\n\nAssistant:"},
-    ]
-    
-    # Basic evaluation prompts  
-    eval_prompts = [
-        {"prompt": "Human: How can I improve my public speaking skills?\n\nAssistant:"},
-        {"prompt": "Human: What's the best way to network professionally?\n\nAssistant:"},
-        {"prompt": "Human: How do I deal with difficult customers?\n\nAssistant:"},
-    ]
-    
-    # Basic preference data in HH-RLHF format
-    preference_data = [
-        {
-            "prompt": "Human: How can I be more productive at work?\n\nAssistant:",
-            "chosen": "Human: How can I be more productive at work?\n\nAssistant: Here are some evidence-based strategies for improving workplace productivity:\n\n1. **Prioritize tasks** using methods like the Eisenhower Matrix\n2. **Time-block your calendar** for focused work periods\n3. **Minimize distractions** by turning off non-essential notifications\n4. **Take regular breaks** to maintain focus and prevent burnout\n\nThe key is finding what works for your specific role and being consistent with those practices.",
-            "rejected": "Human: How can I be more productive at work?\n\nAssistant: Just work harder and longer hours until you get everything done. Don't take breaks and try to multitask as much as possible."
-        },
-        {
-            "prompt": "Human: What's the best way to learn a new programming language?\n\nAssistant:",
-            "chosen": "Human: What's the best way to learn a new programming language?\n\nAssistant: Here's an effective approach to learning a new programming language:\n\n1. **Start with fundamentals** - Learn basic syntax and concepts\n2. **Practice regularly** - Code a little bit every day\n3. **Build projects** - Start simple and gradually increase complexity\n4. **Join communities** - Participate in forums and get feedback\n\nThe key is balancing theory with hands-on practice.",
-            "rejected": "Human: What's the best way to learn a new programming language?\n\nAssistant: Just memorize all the syntax and you'll be fine. Don't worry about actually writing code or understanding concepts."
-        },
-        {
-            "prompt": "Human: How do I maintain a healthy work-life balance?\n\nAssistant:",
-            "chosen": "Human: How do I maintain a healthy work-life balance?\n\nAssistant: Maintaining work-life balance requires intentional effort:\n\n1. **Set clear boundaries** between work and personal time\n2. **Prioritize self-care** and make time for activities you enjoy\n3. **Communicate your limits** to colleagues and supervisors\n4. **Practice saying no** to excessive commitments\n\nRemember that balance looks different for everyone - find what works for your situation.",
-            "rejected": "Human: How do I maintain a healthy work-life balance?\n\nAssistant: Work should always come first, so personal time isn't really important. Just focus on your career and everything else will work out."
-        }
-    ]
-    
-    # Save data files
-    save_json_data(train_prompts, os.path.join(data_dir, "train_prompts.json"))
-    save_json_data(eval_prompts, os.path.join(data_dir, "eval_prompts.json"))
-    save_json_data(preference_data, os.path.join(data_dir, "preference_data.json"))
-    
-    logger.info(f"Created basic sample data files in {data_dir}")
 
 
 def create_preference_dataset(
@@ -590,10 +493,6 @@ def create_summary_report(
             base_val = base_metrics[metric]
             rlhf_val = rlhf_metrics[metric]
             
-            if base_val != 0:
-                improvement_pct = ((rlhf_val - base_val) / abs(base_val)) * 100
-                report['improvements'][f'{metric}_improvement_pct'] = improvement_pct
-            
             report['improvements'][f'{metric}_improvement_abs'] = rlhf_val - base_val
     
     # Save report
@@ -869,8 +768,3 @@ class MetricsTracker:
             self.current_step = max(m.get('step', 0) for m in self.metrics_history) + 1
         
         logger.info(f"Loaded metrics history from {load_path}")
-
-
-if __name__ == "__main__":
-    # Create sample data when run as script
-    create_sample_data_files("data")

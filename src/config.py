@@ -1,5 +1,5 @@
 """
-Configuration file for Assignment 7 - VERL RLHF Training
+Configuration file for Assignment 7 - RLHF Training
 This file contains all configuration parameters for the RLHF pipeline.
 """
 
@@ -35,6 +35,7 @@ class DataConfig:
     # Data paths
     train_prompts_path: str = "data/train_prompts.json"
     eval_prompts_path: str = "data/eval_prompts.json"
+    val_prompts_path: str = "data/val_prompts.json"
     preference_data_path: str = "data/preference_data.json"
     
     # Data processing
@@ -85,7 +86,7 @@ class TrainingConfig:
 
 @dataclass
 class VERLConfig:
-    """VERL-specific configuration parameters."""
+    """Rollout and PPO configuration parameters."""
     
     # Rollout settings
     rollout_batch_size: int = 4
@@ -139,6 +140,8 @@ class SystemConfig:
     
     # Output directories
     output_dir: str = "outputs"
+    reward_model_path: Optional[str] = None
+    rlhf_model_path: Optional[str] = None
     reward_model_dir: str = "outputs/reward_model"
     rlhf_model_dir: str = "outputs/rlhf_model"
     logs_dir: str = "logs"
@@ -154,6 +157,7 @@ class ExperimentConfig:
     experiment_name: str = "verl_rlhf_baseline"
     
     # Evaluation settings
+    eval_num_samples: int = 3
     eval_prompts_sample_size: int = 100
     eval_generation_max_length: int = 256
     eval_batch_size: int = 8
@@ -201,6 +205,35 @@ class AssignmentConfig:
     
     def validate(self) -> None:
         """Validate configuration parameters."""
+        for name, value in {
+            "reward_num_epochs": self.training.reward_num_epochs,
+            "ppo_num_epochs": self.training.ppo_num_epochs,
+            "ppo_epochs": self.verl.ppo_epochs,
+            "train_batch_size": self.data.train_batch_size,
+            "eval_batch_size": self.data.eval_batch_size,
+            "ppo_batch_size": self.training.ppo_batch_size,
+            "ppo_mini_batch_size": self.training.ppo_mini_batch_size,
+            "rollout_batch_size": self.verl.rollout_batch_size,
+            "verl_train_batch_size": self.verl.train_batch_size,
+            "train_mini_batch_size": self.verl.train_mini_batch_size,
+            "eval_num_samples": self.experiment.eval_num_samples,
+            "experiment_eval_batch_size": self.experiment.eval_batch_size,
+            "logging_steps": self.system.logging_steps,
+            "eval_steps": self.system.eval_steps,
+            "save_steps": self.system.save_steps,
+        }.items():
+            if not isinstance(value, int) or value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+        ratios = (self.data.train_split_ratio, self.data.validation_split_ratio,
+                  self.data.test_split_ratio)
+        if any(not 0 < ratio < 1 for ratio in ratios):
+            raise ValueError("Data split ratios must be between 0 and 1")
+        if not 0 <= self.training.ppo_gamma <= 1 or not 0 <= self.training.ppo_gae_lambda <= 1:
+            raise ValueError("gamma and gae_lambda must be between 0 and 1")
+        if self.verl.rollout_max_length < 2:
+            raise ValueError("rollout_max_length must be at least 2")
+        if self.verl.rollout_temperature <= 0 or not 0 < self.verl.rollout_top_p <= 1:
+            raise ValueError("Invalid rollout sampling parameters")
         # Check data split ratios sum to 1.0
         total_ratio = (
             self.data.train_split_ratio + 
@@ -239,9 +272,9 @@ def get_config() -> AssignmentConfig:
     Get the default configuration.
     
     Returns:
-        AssignmentConfig: Default configuration instance
+        AssignmentConfig: A fresh configuration with default values
     """
-    return default_config
+    return AssignmentConfig()
 
 
 def load_config_from_file(config_path: str) -> AssignmentConfig:

@@ -212,3 +212,6 @@ outputs/
 logs/
 plots/
 evaluation_results/
+
+# Local submission artifacts
+assignment7_*.zip

@@ -16,6 +16,7 @@ from transformers import (
 from transformers.modeling_outputs import BaseModelOutput
 from typing import Optional, Dict, List, Tuple, Union
 import logging
+from pathlib import Path
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -58,9 +59,11 @@ class RewardModel(PreTrainedModel):
         
         self.model_name = model_name
         self.hidden_size = hidden_size
+        self.dropout = dropout
 
         self.transformer = AutoModel.from_pretrained(model_name)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.tokenizer.truncation_side = "left"
         self.config = self.transformer.config
         
         self.reward_head = nn.Sequential(
@@ -74,9 +77,9 @@ class RewardModel(PreTrainedModel):
             nn.Linear(hidden_size // 2, 1)  # Output single scalar reward
         )
         
-        self._init_weights()
+        self._init_reward_head()
     
-    def _init_weights(self):
+    def _init_reward_head(self):
         """Initialize the weights of the reward head."""
         for module in self.reward_head.modules():
             if isinstance(module, nn.Linear):
@@ -157,6 +160,8 @@ class RewardModel(PreTrainedModel):
         if device is None:
             device = next(self.parameters()).device
         
+        tokenizer.truncation_side = "left"
+        was_training = self.training
         self.eval()
         all_rewards = []
         
@@ -183,6 +188,7 @@ class RewardModel(PreTrainedModel):
                 batch_rewards = outputs.rewards.cpu().tolist()
                 all_rewards.extend(batch_rewards)
         
+        self.train(was_training)
         return all_rewards
 
 
@@ -213,6 +219,7 @@ class RewardModelTrainer:
         """
         self.model = model
         self.tokenizer = tokenizer
+        self.tokenizer.truncation_side = "left"
         self.device = device
         self.max_length = max_length
         
@@ -228,7 +235,6 @@ class RewardModelTrainer:
         # Please refer to:
         # https://docs.pytorch.org/docs/stable/generated/torch.nn.MarginRankingLoss.html
         self.loss_fn = nn.MarginRankingLoss(margin=1.0)
-        # END ASSIGN7_1_6
     
     def prepare_batch(self, batch: Dict) -> Dict[str, torch.Tensor]:
         """
@@ -267,7 +273,7 @@ class RewardModelTrainer:
             'rejected': rejected_encoded
         }
     
-    def compute_loss(self, batch: Dict) -> torch.Tensor:
+    def compute_loss(self, batch: Dict) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Compute the ranking loss for a batch.
         
@@ -275,7 +281,7 @@ class RewardModelTrainer:
             batch: Prepared batch with tokenized inputs
             
         Returns:
-            Loss tensor
+            Tuple of (scalar loss, chosen rewards, rejected rewards)
         """
         # BEGIN ASSIGN7_1
         # TODO: Compute rewards for chosen and rejected responses
@@ -399,7 +405,7 @@ def load_reward_model(model_path: str, device: torch.device) -> RewardModel:
     Returns:
         Loaded RewardModel
     """
-    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+    checkpoint = torch.load(model_path, map_location=device, weights_only=True)
     
     # Extract model configuration
     config = checkpoint.get('config')
@@ -407,12 +413,16 @@ def load_reward_model(model_path: str, device: torch.device) -> RewardModel:
     hidden_size = checkpoint.get('hidden_size', 768)
     
     # Create model
-    model = create_reward_model(model_name, hidden_size)
+    model = create_reward_model(model_name, hidden_size, checkpoint.get("dropout", 0.1))
     
     # Load state dict
     model.load_state_dict(checkpoint['model_state_dict'])
     model.to(device)
-    
+    tokenizer_path = Path(model_path).with_name(Path(model_path).stem + "_tokenizer")
+    if tokenizer_path.is_dir():
+        model.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        model.tokenizer.truncation_side = "left"
+
     logger.info(f"Loaded reward model from {model_path}")
     
     return model
@@ -435,7 +445,8 @@ def save_reward_model(
     """
     checkpoint = {
         'model_state_dict': model.state_dict(),
-        'config': model.config,
+        'model_config': model.config.to_dict(),
+        'dropout': model.dropout,
         'model_name': model.model_name,
         'hidden_size': model.hidden_size,
     }

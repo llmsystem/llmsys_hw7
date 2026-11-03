@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script to run RLHF training using VERL for Assignment 7.
+Script to run RLHF training for Assignment 7.
 This script loads a trained reward model and runs PPO training on a language model.
 """
 
@@ -13,12 +13,12 @@ import logging
 from tqdm import tqdm
 
 # Add src to path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from config import AssignmentConfig, get_config, load_config_from_file
-from reward_model import load_reward_model
-from rlhf_trainer import create_rlhf_trainer, evaluate_policy
-from utils import (
+from src.config import AssignmentConfig, get_config, load_config_from_file, save_config_to_file
+from src.reward_model import load_reward_model
+from src.rlhf_trainer import create_rlhf_trainer, evaluate_policy
+from src.utils import (
     load_json_data,
     setup_logging,
     set_seed,
@@ -27,8 +27,7 @@ from utils import (
     plot_reward_distribution,
     compare_models_side_by_side,
     create_summary_report,
-    save_model_outputs,
-    create_sample_data_files
+    save_model_outputs
 )
 
 logger = logging.getLogger(__name__)
@@ -43,6 +42,7 @@ def run_rlhf_training(config: AssignmentConfig):
     """
     # Set up logging
     logger = setup_logging(config.system.logs_dir, "rlhf_training")
+    save_config_to_file(config, os.path.join(config.system.logs_dir, "rlhf_config.yaml"))
     
     # Set random seed
     set_seed(config.experiment.seed)
@@ -58,35 +58,37 @@ def run_rlhf_training(config: AssignmentConfig):
     
     # Check if data files exist
     if not os.path.exists(config.data.train_prompts_path):
-        logger.info("Training data not found, creating sample data...")
-        create_sample_data_files("data")
+        raise FileNotFoundError("Prepare data first: python scripts/prepare_data.py --max_samples 10000")
     
     # Load training and evaluation prompts
     logger.info("Loading training data...")
     try:
         train_prompts_data = load_json_data(config.data.train_prompts_path)
-        eval_prompts_data = load_json_data(config.data.eval_prompts_path)
+        eval_prompts_data = load_json_data(config.data.val_prompts_path)
     except FileNotFoundError as e:
         logger.error(f"Could not find data files: {e}")
-        logger.error("Please run: python src/utils.py to create sample data")
-        return
+        logger.error("Please run: python scripts/prepare_data.py --max_samples 10000")
+        raise FileNotFoundError("Required data or model checkpoint is missing; see the log above")
     
     # Extract prompts from data
     train_prompts = [item['prompt'] for item in train_prompts_data]
     eval_prompts = [item['prompt'] for item in eval_prompts_data]
     
+    if not train_prompts or not eval_prompts:
+        raise ValueError("Training and validation prompt splits must be nonempty")
+
     logger.info(f"Loaded {len(train_prompts)} training prompts")
     logger.info(f"Loaded {len(eval_prompts)} evaluation prompts")
     
     # Load reward model
-    reward_model_path = os.path.join(config.system.reward_model_dir, "best_reward_model.pt")
-    if not os.path.exists(reward_model_path):
+    reward_model_path = config.system.reward_model_path or os.path.join(config.system.reward_model_dir, "best_reward_model.pt")
+    if not config.system.reward_model_path and not os.path.exists(reward_model_path):
         reward_model_path = os.path.join(config.system.reward_model_dir, "final_reward_model.pt")
     
     if not os.path.exists(reward_model_path):
         logger.error(f"Could not find trained reward model at {reward_model_path}")
         logger.error("Please run: python scripts/train_reward_model.py first")
-        return
+        raise FileNotFoundError("Required data or model checkpoint is missing; see the log above")
     
     logger.info(f"Loading reward model from {reward_model_path}")
     reward_model = load_reward_model(reward_model_path, device)
@@ -149,7 +151,7 @@ def run_rlhf_training(config: AssignmentConfig):
             'reward_std': 0.0
         }
         
-        num_batches = len(train_prompts) // config.verl.rollout_batch_size
+        num_batches = (len(train_prompts) + config.verl.rollout_batch_size - 1) // config.verl.rollout_batch_size
         
         # Create progress bar for epoch
         epoch_progress = tqdm(range(num_batches), desc=f"Epoch {epoch + 1}")
@@ -180,28 +182,27 @@ def run_rlhf_training(config: AssignmentConfig):
                 'kl': f"{step_metrics.kl_divergence:.4f}"
             })
             
-            # Log detailed metrics periodically
-            if total_steps % config.system.logging_steps == 0:
-                step_metrics_dict = {
-                    'step': total_steps,
-                    'policy_loss': step_metrics.policy_loss,
-                    'value_loss': step_metrics.value_loss,
-                    'entropy': step_metrics.entropy,
-                    'kl_divergence': step_metrics.kl_divergence,
-                    'reward_mean': step_metrics.reward_mean,
-                    'reward_std': step_metrics.reward_std,
-                    'advantage_mean': step_metrics.advantage_mean,
-                    'advantage_std': step_metrics.advantage_std
-                }
-                
-                metrics_tracker.update(step_metrics_dict, step=total_steps)
-                
-                logger.info(f"Step {total_steps}:")
-                logger.info(f"  Policy Loss: {step_metrics.policy_loss:.4f}")
-                logger.info(f"  Value Loss: {step_metrics.value_loss:.4f}")
-                logger.info(f"  Reward Mean: {step_metrics.reward_mean:.4f}")
-                logger.info(f"  KL Divergence: {step_metrics.kl_divergence:.4f}")
+            # Record every update so short runs also produce training curves.
+            step_metrics_dict = {
+                'step': total_steps,
+                'policy_loss': step_metrics.policy_loss,
+                'value_loss': step_metrics.value_loss,
+                'entropy': step_metrics.entropy,
+                'kl_divergence': step_metrics.kl_divergence,
+                'reward_mean': step_metrics.reward_mean,
+                'reward_std': step_metrics.reward_std,
+                'advantage_mean': step_metrics.advantage_mean,
+                'advantage_std': step_metrics.advantage_std
+            }
+
+            metrics_tracker.update(step_metrics_dict, step=total_steps)
             
+            logger.info(f"Step {total_steps}:")
+            logger.info(f"  Policy Loss: {step_metrics.policy_loss:.4f}")
+            logger.info(f"  Value Loss: {step_metrics.value_loss:.4f}")
+            logger.info(f"  Reward Mean: {step_metrics.reward_mean:.4f}")
+            logger.info(f"  KL Divergence: {step_metrics.kl_divergence:.4f}")
+
             if (batch_idx + 1) % config.system.eval_steps == 0:
                 logger.info(f"Evaluating model after batch {batch_idx + 1}...")
                 eval_metrics = evaluate_policy(
@@ -241,6 +242,12 @@ def run_rlhf_training(config: AssignmentConfig):
             num_samples=3
         )
         
+        if eval_metrics['mean_reward'] > best_reward:
+            best_reward = eval_metrics['mean_reward']
+            best_model_path = os.path.join(config.system.rlhf_model_dir, "best_rlhf_model")
+            trainer.policy.model.save_pretrained(best_model_path)
+            trainer.tokenizer.save_pretrained(best_model_path)
+
         # Add evaluation metrics to epoch metrics
         for key, value in eval_metrics.items():
             epoch_metrics[f'eval_{key}'] = value
@@ -371,7 +378,7 @@ def run_rlhf_training(config: AssignmentConfig):
 
 def main():
     """Main function."""
-    parser = argparse.ArgumentParser(description="Run RLHF training with VERL")
+    parser = argparse.ArgumentParser(description="Run single-device RLHF training")
     parser.add_argument(
         "--config",
         type=str,
@@ -381,7 +388,7 @@ def main():
     parser.add_argument(
         "--model_name",
         type=str,
-        default="gpt2",
+        default=None,
         help="Name of the base language model"
     )
     parser.add_argument(
@@ -393,19 +400,19 @@ def main():
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=1e-6,
+        default=None,
         help="Learning rate for PPO training"
     )
     parser.add_argument(
         "--num_epochs",
         type=int,
-        default=2,
+        default=None,
         help="Number of PPO training epochs"
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=4,
+        default=None,
         help="Rollout batch size"
     )
     
@@ -418,16 +425,16 @@ def main():
         config = get_config()
     
     # Override config with command line arguments
-    if args.model_name:
+    if args.model_name is not None:
         config.model.model_name = args.model_name
-    if args.learning_rate:
+    if args.learning_rate is not None:
         config.training.ppo_learning_rate = args.learning_rate
-    if args.num_epochs:
+    if args.num_epochs is not None:
         config.training.ppo_num_epochs = args.num_epochs
-    if args.batch_size:
+    if args.batch_size is not None:
         config.verl.rollout_batch_size = args.batch_size
     if args.reward_model_path:
-        config.system.reward_model_dir = os.path.dirname(args.reward_model_path)
+        config.system.reward_model_path = args.reward_model_path
     
     # Validate configuration
     config.validate()
