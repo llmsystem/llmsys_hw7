@@ -115,18 +115,18 @@ def test_gae_terminal_reward_and_padding(trainer):
     values = torch.tensor([[99., .2, .4, 99., 99.], [99., .1, .3, .5, 99.]])
     mask = torch.tensor([[0, 1, 1, 0, 0], [0, 1, 1, 1, 0]])
     adv, returns = trainer._compute_gae(torch.tensor([1., 2.]), values, mask)
-    expected = torch.tensor([[0., 1., 1., 0., 0.], [0., 2., 2., 2., 0.]])
+    expected = torch.tensor([[0., .4, 1., 0., 0.], [0., .3, .5, 2., 0.]])
     torch.testing.assert_close(returns, expected)
     torch.testing.assert_close(adv, (expected - values) * mask)
 
 
-def test_gae_uses_gamma_and_lambda(trainer):
+def test_td_uses_gamma_without_recursive_gae(trainer):
     trainer.config.training.ppo_gamma = .9
     trainer.config.training.ppo_gae_lambda = .5
     adv, returns = trainer._compute_gae(
         torch.tensor([1.]), torch.tensor([[.2, .4, 0.]]), torch.tensor([[1, 1, 0]]))
-    torch.testing.assert_close(adv, torch.tensor([[.43, .6, 0.]]))
-    torch.testing.assert_close(returns, torch.tensor([[.63, 1., 0.]]))
+    torch.testing.assert_close(adv, torch.tensor([[.16, .6, 0.]]))
+    torch.testing.assert_close(returns, torch.tensor([[.36, 1., 0.]]))
 
 
 def test_entropy_value_and_gradient(trainer):

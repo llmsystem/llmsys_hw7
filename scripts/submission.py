@@ -40,7 +40,7 @@ def build_submission(root, andrew_id, report, commands, output, check_path=None)
     root, output = Path(root), Path(output)
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}', andrew_id):
         raise ValueError('Use your Andrew ID (letters, digits, underscore, or hyphen)')
-    if Path(report).suffix.lower() not in {'.pdf', '.md'}:
+    if report is not None and Path(report).suffix.lower() not in {'.pdf', '.md'}:
         raise ValueError('The report must be a PDF or Markdown file')
     required = [*SOURCE_FILES, 'README.md', 'requirements.txt', *REQUIRED_EVIDENCE]
     files = {}
@@ -70,8 +70,10 @@ def build_submission(root, andrew_id, report, commands, output, check_path=None)
                 raise ValueError(f'Symlink is not allowed: {relative}')
             if path.is_file() and path.suffix.lower() in suffixes:
                 add(relative.as_posix(), checked_bytes(path))
-    add('report' + Path(report).suffix.lower(), checked_bytes(Path(report)))
-    add('commands.txt', checked_bytes(Path(commands)))
+    if report is not None:
+        add('report' + Path(report).suffix.lower(), checked_bytes(Path(report)))
+    if commands is not None:
+        add('commands.txt', checked_bytes(Path(commands)))
     if check_path is not None:
         check_data = checked_bytes(Path(check_path))
         check = json.loads(check_data)
@@ -109,15 +111,17 @@ def build_submission(root, andrew_id, report, commands, output, check_path=None)
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--andrew-id', required=True)
-    parser.add_argument('--report', type=Path, required=True)
-    parser.add_argument('--commands', type=Path, required=True, help='Text file with exact experiment commands')
+    parser.add_argument('--report', type=Path, help='Optional PDF or Markdown notes')
+    parser.add_argument('--commands', type=Path, help='Text file with exact experiment commands')
     parser.add_argument('--output', type=Path, help='Default: assignment7_ANDREW_ID.zip')
     args = parser.parse_args()
     try:
         for name in REQUIRED_EVIDENCE:
             checked_bytes(ROOT / name)
-        checked_bytes(args.report)
-        checked_bytes(args.commands)
+        if args.report is not None:
+            checked_bytes(args.report)
+        if args.commands is not None:
+            checked_bytes(args.commands)
         output = args.output or Path(f'assignment7_{args.andrew_id}.zip')
         with tempfile.TemporaryDirectory() as temporary:
             check_path = Path(temporary) / 'self_check.json'

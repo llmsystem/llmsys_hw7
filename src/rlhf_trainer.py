@@ -446,7 +446,7 @@ class VERLTrainer:
         attention_mask: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Compute Generalized Advantage Estimation.
+        Compute simplified one-step TD advantages (legacy method name).
         
         Args:
             rewards: Reward values
@@ -457,14 +457,14 @@ class VERLTrainer:
             Tuple of (advantages, returns)
         """
         # BEGIN ASSIGN7_2_1
-        # TODO: Implement backward GAE over response states selected by attention_mask.
-        # values[:, t] is V(s_t), before action token t+1 is generated.
-        # Place each sequence reward on its last valid state (including EOS action).
-        # Treat the generation length limit as terminal, with zero bootstrap value.
-        # delta_t = r_t + gamma * V(s_{t+1}) * next_mask - V(s_t)
-        # A_t = delta_t + gamma * gae_lambda * next_mask * A_{t+1}
-        # returns = advantages + values on valid states; zero elsewhere.
-        # Do not propagate across padding or into the prompt.
+        # TODO: Implement the original scaffold's simplified one-step TD estimate.
+        # values[:, t] predicts the value before action token t+1.
+        # Put the sequence reward on the last valid response state; zero elsewhere.
+        # target[t] = reward[t] + gamma * next_valid * values[t+1]
+        # advantage[t] = target[t] - values[t]
+        # Use zero bootstrap after the final response state, including length limits.
+        # Return (advantages, targets), with zeros outside the response-state mask.
+        # Full recursive GAE and gae_lambda are not required.
         raise NotImplementedError("Need to implement GAE computation for Assignment 7")
         
         # END ASSIGN7_2_1

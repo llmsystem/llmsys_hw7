@@ -91,3 +91,11 @@ def test_symlinks_are_rejected(bundle_inputs):
     (root / 'plots/linked.md').symlink_to(report)
     with pytest.raises(ValueError, match='Symlink'):
         build(bundle_inputs)
+
+
+def test_notes_and_commands_are_optional(bundle_inputs):
+    root, _, _, output = bundle_inputs
+    submission.build_submission(root, 'student1', None, None, output)
+    with zipfile.ZipFile(output) as archive:
+        assert 'report.md' not in archive.namelist()
+        assert 'commands.txt' not in archive.namelist()

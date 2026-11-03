@@ -11,11 +11,11 @@ The goal is to understand reward learning, token-level advantages, and PPO, and 
 ## Learning objectives and reading
 
 - Train and validate a pairwise preference reward model.
-- Implement generalized advantage estimation (GAE), a clipped PPO objective, and an entropy bonus.
+- Implement the provided token-level advantage calculation, clipped PPO objective, and entropy bonus.
 - Handle response masks, EOS tokens, and a frozen reference policy correctly.
 - Compare held-out reward scores and generated text, including evidence of reward exploitation.
 
-Read the [RLHF introduction](https://huggingface.co/blog/rlhf), [PPO paper](https://arxiv.org/abs/1707.06347), and [GAE paper](https://arxiv.org/abs/1506.02438). The verl documentation and HybridFlow paper provide systems context; implementing their distributed architecture is outside this assignment.
+Read the [RLHF introduction](https://huggingface.co/blog/rlhf) and [PPO paper](https://arxiv.org/abs/1707.06347). The verl documentation and HybridFlow paper provide systems context; implementing their distributed architecture is outside this assignment.
 
 ## Setup
 
@@ -65,31 +65,17 @@ python scripts/train_reward_model.py
 
 The script selects `outputs/reward_model/best_reward_model.pt` by validation preference accuracy, saves the final model separately, and writes metrics and `logs/reward_model_training_curves.png`. Preference accuracy is the fraction of pairs with `chosen_reward > rejected_reward`; ties count as incorrect. Report validation and test accuracy separately. The reward-model experiment must achieve at least 60% validation preference accuracy. Include supporting diagnostics if your run falls below this requirement.
 
-## Problem 2: PPO training (40 points)
+## Problem 2: RLHF training with a verl-like framework (40 points)
 
 Complete the three marked sections in `src/rlhf_trainer.py`:
 
-- `_compute_gae` (`ASSIGN7_2_1`): backward GAE with `ppo_gamma` and `ppo_gae_lambda`.
+- `_compute_gae` (`ASSIGN7_2_1`): the simplified one-step TD advantage calculation described in the code comments. The method name is retained for compatibility; full recursive GAE is not required.
 - `_train_step_custom` (`ASSIGN7_2_2`): clipped surrogate policy loss and entropy bonus.
 - `_compute_entropy` (`ASSIGN7_2_3`): categorical entropy from logits, averaged over supplied valid response states.
 
-### Token alignment and GAE contract
+The original scaffold uses one-step TD targets: each valid response state receives its immediate reward plus a discounted next-state value, and its advantage is the target minus its current value. The final response state receives the sequence reward with zero bootstrap value. `ppo_gae_lambda` is unused in this simplified calculation.
 
-For token IDs `x[0:L]`, the hidden state/logits at position `t` predict token `x[t+1]`. If the padded prompt width is `P`, response actions use state positions `P-1` through `L-2`. `_compute_gae` receives full-width values and a **response-state mask**, not the ordinary input attention mask. The caller shifts the generated-token mask one position to the left. The first generated EOS is a valid action; all subsequent padding is excluded.
-
-Put the scalar sequence reward at the last valid response state; other step rewards are zero. Traverse backward with:
-
-```text
-delta[t] = reward[t] + gamma * next_valid * value[t+1] - value[t]
-advantage[t] = delta[t] + gamma * lambda * next_valid * advantage[t+1]
-return[t] = advantage[t] + value[t]
-```
-
-Use zero next value/advantage after the final valid state. For this assignment, reaching the generation length limit is also terminal. Return full-width tensors with zeros outside the response-state mask. Do not propagate through padding or prompt states.
-
-### PPO contract
-
-Use `ratio = exp(new_log_prob - old_log_prob)` and minimize the negative mean of the smaller unclipped/clipped advantage surrogate. Compute entropy from `scores[new_log_probs_mask]`, excluding padding and prompt tokens. The surrounding code adds the entropy bonus, optional reference-policy KL penalty, and value regression. Rollout log probabilities, advantages, and returns must remain detached during updates. The reference policy stays frozen.
+The caller supplies a response-state mask: state position `t` predicts token `t+1`. Include the first EOS action, exclude padding and prompt-only states, and return zeros outside the mask. The other two TODOs implement the standard clipped PPO surrogate and categorical entropy. No additional model or algorithm is required.
 
 Training rollouts sample from the unmodified policy distribution (temperature 1, top-p 1, top-k disabled), matching the log probabilities used by PPO. Evaluation may use temperature/top-p sampling. `rollout_max_length` is the total prompt-plus-response token limit; prompts are truncated to half that length. Each rollout batch is updated as a whole for `verl.ppo_epochs`; minibatching, adaptive KL, and gradient accumulation are not implemented. Related legacy configuration fields are inactive.
 
@@ -110,14 +96,9 @@ python scripts/evaluate.py --base_model gpt2 \
 
 `--rlhf_model` accepts the actual directory containing a Hugging Face model and tokenizer. `--reward_model` accepts the exact reward checkpoint file. Without these arguments, evaluation searches for the best checkpoint and then the final checkpoint in the configured output directories. Without a policy checkpoint, it evaluates only the base model.
 
-Submit a short report with:
+Inspect `plots/reward_comparison.png` and the generated samples in `evaluation_results/` to compare the base and trained policies. Use the same held-out prompts and generation settings for both models.
 
-- Reward model validation/test accuracy and training settings, including seed and dataset size.
-- PPO curves and `plots/reward_comparison.png`, with mean/std reward and response length for both policies on the same held-out prompts and generation settings.
-- At least five side-by-side prompt/response examples and a qualitative discussion of helpfulness, harmlessness, coherence, and reward exploitation.
-- An explanation of any missing reward improvement, instability, truncation effects, or mismatch between learned reward and text quality.
-
-Evaluation writes sampled outputs and metrics to `evaluation_results/`. Each model generates independent samples; their reward differences are not human preference win rates. Reward units have no universal zero or scale. Higher reward or a shifted histogram alone does not demonstrate better responses. Incoherent high-reward generations should be investigated and discussed, not treated as successful alignment.
+You may observe incoherent generations receiving high rewards: this can indicate reward exploitation. A higher learned reward alone does not establish that the responses are more helpful or harmless. Differences between independently sampled rewards are not human preference win rates.
 
 ## Configuration
 
@@ -155,31 +136,30 @@ Staff use a separate, unpublished grading tool and their own tests, along with t
 
 | Problem | Points | Evidence |
 | --- | --- | --- |
-| Reward model | 40 = 20 automatic + 20 TA review | Ranking-loss correctness; validation/test accuracy, training settings, curves and diagnostics |
-| PPO | 40 = 20 automatic + 20 TA review | GAE/PPO/entropy correctness; reproducible training curves and analysis |
-| Evaluation | 20 TA review | Held-out comparison, saved samples/configurations, and substantive analysis |
+| Reward model | 40 | Pass the reward-model tests and achieve at least 60% validation preference accuracy |
+| RLHF training | 40 | Complete the trainer TODOs, pass the relevant tests, and demonstrate reward improvement in `plots/rlhf_training_curves.png` |
+| Evaluation | 20 | Run the base/trained comparison and submit `plots/reward_comparison.png` with its metrics and generated samples |
 
-The assignment has **40 automatic points**: reward loss 20, GAE 10, PPO 5, and entropy 5. Staff run the unpublished grader against submitted source; local self-check results do not determine the official score. The other **60 points** cover the experiments, evidence, and analysis. Passing the public tests does not automatically earn the manual-review points.
-
-Reward improvement is an experimental outcome to analyze, not a required fixed transition such as −0.5 to +0.5. Correctness and an honest explanation matter when reward does not improve. Do not fabricate or selectively omit failed runs.
+These retain the original **40/40/20** problem totals. There is no additional fixed automatic/manual point split. Student self-check results support correctness checks; they are not the final course grade. Reward improvement is measured relative to your own baseline, rather than against a universal reward value such as −0.5 or +0.5. If the reward does not improve, include a brief explanation with the results so staff can assess the run.
 
 ### Build the submission
 
 **Do not upload model weights, training checkpoints, datasets, or virtual environments.** Keep the selected reward and policy checkpoints locally; staff may request them separately if needed. The regular submission is limited to **50 MiB compressed and uncompressed**, with a **10 MiB limit per file**.
 
-After completing all three experiments, save your report as `report.pdf` or `report.md` and put the exact data preparation, training, and evaluation commands in `commands.txt`, including any overrides. The training/evaluation scripts automatically save the effective configurations as `logs/reward_model_config.yaml`, `logs/rlhf_config.yaml`, and `logs/evaluation_config.yaml`. These include the seed and resolved command-line overrides. Use the default output directories for submission.
+After completing the three experiments, run the submission command below. A separate report is not required. The training/evaluation scripts automatically save the effective configurations as `logs/reward_model_config.yaml`, `logs/rlhf_config.yaml`, and `logs/evaluation_config.yaml`. These include the seed and resolved command-line overrides. Use the default output directories for submission.
 
 ```bash
-python scripts/submission.py --andrew-id YOUR_ANDREW_ID \
-  --report report.pdf --commands commands.txt
+python scripts/submission.py --andrew-id YOUR_ANDREW_ID
 ```
+
+You may optionally attach notes with `--report report.md` (or PDF) and exact commands with `--commands commands.txt`.
 
 The script creates `assignment7_YOUR_ANDREW_ID.zip`. Missing experiment evidence stops packaging and identifies the missing file. The script also runs the public student self-check and includes its JSON feedback. Failed implementation tests still allow submission for partial credit; setup errors stop packaging. These checks do not assign course points. The script never deletes local checkpoints or overwrites an existing archive; use `--output another_name.zip` for a new archive.
 
 The archive includes only:
 
 - Python source under `src/`, `scripts/`, and `tests/`, plus the README and requirements.
-- Your report and exact commands, generated `package_versions.txt`, and student `self_check.json` feedback.
+- Generated `package_versions.txt` and student `self_check.json` feedback, plus notes or commands if you supplied them.
 - Small metrics, configurations, plots, and sample outputs from `logs/`, `plots/`, and `evaluation_results/`.
 - A `submission_manifest.json` recording your Andrew ID, file sizes, and SHA-256 hashes.
 
