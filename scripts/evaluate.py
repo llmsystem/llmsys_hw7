@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Evaluation script for Assignment 7.
+Evaluation script for Assignment 6.
 This script evaluates and compares the base model and RLHF-trained model.
 """
 
@@ -14,11 +14,11 @@ import numpy as np
 from tqdm import tqdm
 
 # Add src to path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from config import AssignmentConfig, get_config, load_config_from_file
-from reward_model import load_reward_model
-from utils import (
+from src.config import AssignmentConfig, get_config, load_config_from_file, save_config_to_file
+from src.reward_model import load_reward_model
+from src.utils import (
     load_json_data,
     setup_logging,
     set_seed,
@@ -26,8 +26,7 @@ from utils import (
     plot_reward_distribution,
     compare_models_side_by_side,
     save_model_outputs,
-    create_summary_report,
-    create_sample_data_files
+    create_summary_report
 )
 
 logger = logging.getLogger(__name__)
@@ -57,7 +56,7 @@ class ModelEvaluator:
         model,
         model_tokenizer,
         prompts,
-        num_samples_per_prompt=5,
+        num_samples_per_prompt=3,
         max_length=256,
         temperature=0.7,
         top_p=0.9
@@ -157,7 +156,7 @@ class ModelEvaluator:
             results[f'reward_p{p}'] = np.percentile(all_rewards, p)
         
         # Text statistics
-        text_stats = compute_text_statistics(all_responses, self.tokenizer)
+        text_stats = compute_text_statistics(all_responses, model_tokenizer)
         results.update({f'response_{k}': v for k, v in text_stats.items()})
         
         return results, all_prompts, all_responses, all_rewards
@@ -204,10 +203,6 @@ class ModelEvaluator:
                 base_val = base_results[key]
                 rlhf_val = rlhf_results[key]
                 
-                if base_val != 0:
-                    improvement_pct = ((rlhf_val - base_val) / abs(base_val)) * 100
-                    improvements[f'{key}_improvement_pct'] = improvement_pct
-                
                 improvements[f'{key}_improvement_abs'] = rlhf_val - base_val
         
         return {
@@ -228,6 +223,7 @@ def evaluate_models(config: AssignmentConfig):
     """
     # Set up logging
     logger = setup_logging(config.system.logs_dir, "model_evaluation")
+    save_config_to_file(config, os.path.join(config.system.logs_dir, "evaluation_config.yaml"))
     
     # Set random seed
     set_seed(config.experiment.seed)
@@ -242,8 +238,7 @@ def evaluate_models(config: AssignmentConfig):
     
     # Check if data files exist
     if not os.path.exists(config.data.eval_prompts_path):
-        logger.info("Evaluation data not found, creating sample data...")
-        create_sample_data_files("data")
+        raise FileNotFoundError("Prepare data first: python scripts/prepare_data.py --max_samples 10000")
     
     # Load evaluation prompts
     logger.info("Loading evaluation prompts...")
@@ -252,29 +247,32 @@ def evaluate_models(config: AssignmentConfig):
         eval_prompts = [item['prompt'] for item in eval_prompts_data]
     except FileNotFoundError:
         logger.error(f"Could not find evaluation prompts at {config.data.eval_prompts_path}")
-        return
+        raise FileNotFoundError("Required data or model checkpoint is missing; see the log above")
     
     # Limit number of prompts for evaluation if specified
     if hasattr(config.experiment, 'eval_prompts_sample_size') and config.experiment.eval_prompts_sample_size > 0:
         eval_prompts = eval_prompts[:config.experiment.eval_prompts_sample_size]
     
+    if not eval_prompts:
+        raise ValueError("Evaluation prompts must be nonempty")
+
     logger.info(f"Evaluating on {len(eval_prompts)} prompts")
     
     # Load reward model
-    reward_model_path = os.path.join(config.system.reward_model_dir, "best_reward_model.pt")
-    if not os.path.exists(reward_model_path):
+    reward_model_path = config.system.reward_model_path or os.path.join(config.system.reward_model_dir, "best_reward_model.pt")
+    if not config.system.reward_model_path and not os.path.exists(reward_model_path):
         reward_model_path = os.path.join(config.system.reward_model_dir, "final_reward_model.pt")
     
     if not os.path.exists(reward_model_path):
         logger.error(f"Could not find reward model at {reward_model_path}")
         logger.error("Please train reward model first: python scripts/train_reward_model.py")
-        return
+        raise FileNotFoundError("Required data or model checkpoint is missing; see the log above")
     
     logger.info(f"Loading reward model from {reward_model_path}")
     reward_model = load_reward_model(reward_model_path, device)
     
-    # Load reward model tokenizer
-    reward_tokenizer = AutoTokenizer.from_pretrained(config.model.reward_model_name)
+    # Use the tokenizer belonging to the loaded checkpoint.
+    reward_tokenizer = reward_model.tokenizer
     if reward_tokenizer.pad_token is None:
         reward_tokenizer.pad_token = reward_tokenizer.eos_token
     
@@ -294,10 +292,13 @@ def evaluate_models(config: AssignmentConfig):
     base_model.to(device)
     
     # Check if RLHF model exists
-    rlhf_model_path = os.path.join(config.system.rlhf_model_dir, "best_rlhf_model")
-    if not os.path.exists(rlhf_model_path):
+    rlhf_model_path = config.system.rlhf_model_path or os.path.join(config.system.rlhf_model_dir, "best_rlhf_model")
+    if not config.system.rlhf_model_path and not os.path.exists(rlhf_model_path):
         rlhf_model_path = os.path.join(config.system.rlhf_model_dir, "final_rlhf_model")
     
+    if config.system.rlhf_model_path and not os.path.isdir(rlhf_model_path):
+        raise FileNotFoundError(rlhf_model_path)
+
     if os.path.exists(rlhf_model_path):
         # Load RLHF model for comparison
         logger.info(f"Loading RLHF model from {rlhf_model_path}")
@@ -319,7 +320,7 @@ def evaluate_models(config: AssignmentConfig):
             rlhf_model=rlhf_model,
             rlhf_tokenizer=rlhf_tokenizer,
             prompts=eval_prompts,
-            num_samples_per_prompt=3,
+            num_samples_per_prompt=config.experiment.eval_num_samples,
             max_length=config.experiment.eval_generation_max_length,
             temperature=0.7,
             top_p=0.9
@@ -404,7 +405,7 @@ def evaluate_models(config: AssignmentConfig):
         plt.axvline(np.mean(improvement_per_prompt), color='red', linestyle='--')
         plt.xlabel('Reward Improvement')
         plt.ylabel('Frequency')
-        plt.title('Per-Sample Reward Improvement')
+        plt.title('Difference Between Independent Sample Rewards')
         plt.grid(True, alpha=0.3)
         
         plt.tight_layout()
@@ -432,10 +433,10 @@ def evaluate_models(config: AssignmentConfig):
         sample_size = min(10, len(eval_prompts))
         compare_models_side_by_side(
             prompts=eval_prompts[:sample_size],
-            base_responses=base_responses[:sample_size * 3:3],  # Take first response per prompt
-            rlhf_responses=rlhf_responses[:sample_size * 3:3],
-            base_rewards=base_rewards[:sample_size * 3:3],
-            rlhf_rewards=rlhf_rewards[:sample_size * 3:3],
+            base_responses=base_responses[:sample_size * config.experiment.eval_num_samples:config.experiment.eval_num_samples],  # Take first response per prompt
+            rlhf_responses=rlhf_responses[:sample_size * config.experiment.eval_num_samples:config.experiment.eval_num_samples],
+            base_rewards=base_rewards[:sample_size * config.experiment.eval_num_samples:config.experiment.eval_num_samples],
+            rlhf_rewards=rlhf_rewards[:sample_size * config.experiment.eval_num_samples:config.experiment.eval_num_samples],
             save_path="evaluation_results/side_by_side_comparison.json",
             num_examples=sample_size
         )
@@ -453,15 +454,15 @@ def evaluate_models(config: AssignmentConfig):
         logger.info("EVALUATION SUMMARY")
         logger.info("="*60)
         logger.info(f"Number of prompts evaluated: {len(eval_prompts)}")
-        logger.info(f"Samples per prompt: {3}")
+        logger.info(f"Samples per prompt: {config.experiment.eval_num_samples}")
         logger.info(f"Total samples: {len(base_rewards)}")
         logger.info("")
         logger.info(f"Base Model Average Reward: {np.mean(base_rewards):.4f} ± {np.std(base_rewards):.4f}")
         logger.info(f"RLHF Model Average Reward: {np.mean(rlhf_rewards):.4f} ± {np.std(rlhf_rewards):.4f}")
         logger.info(f"Average Improvement: {np.mean(rlhf_rewards) - np.mean(base_rewards):.4f}")
-        logger.info(f"Improvement Percentage: {((np.mean(rlhf_rewards) - np.mean(base_rewards)) / abs(np.mean(base_rewards))) * 100:.2f}%")
+        logger.info("Reward differences are in learned reward units; percentages are not calibrated quality measures.")
         logger.info("")
-        logger.info(f"Percentage of samples improved: {(improvement_per_prompt > 0).mean() * 100:.1f}%")
+        logger.info(f"Fraction of independent sample differences above zero: {(improvement_per_prompt > 0).mean() * 100:.1f}%")
         logger.info(f"Max improvement: {np.max(improvement_per_prompt):.4f}")
         logger.info(f"Max degradation: {np.min(improvement_per_prompt):.4f}")
         
@@ -472,7 +473,7 @@ def evaluate_models(config: AssignmentConfig):
             base_model,
             base_tokenizer,
             eval_prompts,
-            num_samples_per_prompt=5,
+            num_samples_per_prompt=config.experiment.eval_num_samples,
             max_length=config.experiment.eval_generation_max_length,
             temperature=0.7,
             top_p=0.9
@@ -520,7 +521,7 @@ def evaluate_models(config: AssignmentConfig):
 
 def main():
     """Main function."""
-    parser = argparse.ArgumentParser(description="Evaluate models for Assignment 7")
+    parser = argparse.ArgumentParser(description="Evaluate models for Assignment 6")
     parser.add_argument(
         "--config",
         type=str,
@@ -530,7 +531,7 @@ def main():
     parser.add_argument(
         "--base_model",
         type=str,
-        default="gpt2",
+        default=None,
         help="Name of the base model"
     )
     parser.add_argument(
@@ -548,7 +549,7 @@ def main():
     parser.add_argument(
         "--num_samples",
         type=int,
-        default=3,
+        default=None,
         help="Number of samples to generate per prompt"
     )
     parser.add_argument(
@@ -567,13 +568,15 @@ def main():
         config = get_config()
     
     # Override config with command line arguments
-    if args.base_model:
+    if args.base_model is not None:
         config.model.model_name = args.base_model
     if args.rlhf_model:
-        config.system.rlhf_model_dir = args.rlhf_model
+        config.system.rlhf_model_path = args.rlhf_model
     if args.reward_model:
-        config.system.reward_model_dir = os.path.dirname(args.reward_model)
-    if args.max_prompts:
+        config.system.reward_model_path = args.reward_model
+    if args.num_samples is not None:
+        config.experiment.eval_num_samples = args.num_samples
+    if args.max_prompts is not None:
         config.experiment.eval_prompts_sample_size = args.max_prompts
     
     # Validate configuration

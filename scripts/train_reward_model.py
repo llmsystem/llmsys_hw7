@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script to train the reward model for Assignment 7.
+Script to train the reward model for Assignment 6.
 This script loads preference data and trains a reward model using pairwise ranking loss.
 """
 
@@ -14,18 +14,17 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 import time
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from config import AssignmentConfig, get_config, load_config_from_file
-from reward_model import create_reward_model, RewardModelTrainer, save_reward_model
-from utils import (
+from src.config import AssignmentConfig, get_config, load_config_from_file, save_config_to_file
+from src.reward_model import create_reward_model, RewardModelTrainer, save_reward_model, load_reward_model
+from src.utils import (
     load_json_data, 
     split_data, 
     setup_logging, 
     set_seed, 
     MetricsTracker,
-    plot_training_curves,
-    create_sample_data_files
+    plot_training_curves
 )
 
 logger = logging.getLogger(__name__)
@@ -95,6 +94,7 @@ def train_reward_model(config: AssignmentConfig):
         config: Training configuration
     """
     logger = setup_logging(config.system.logs_dir, "reward_model_training")
+    save_config_to_file(config, os.path.join(config.system.logs_dir, "reward_model_config.yaml"))
     set_seed(config.experiment.seed)
     device = torch.device(config.system.device)
     logger.info(f"Using device: {device}")
@@ -103,15 +103,14 @@ def train_reward_model(config: AssignmentConfig):
     os.makedirs(config.system.logs_dir, exist_ok=True)
     
     if not os.path.exists(config.data.preference_data_path):
-        logger.info("Preference data not found, creating sample data...")
-        create_sample_data_files("data")
+        raise FileNotFoundError("Prepare data first: python scripts/prepare_data.py --max_samples 10000")
     
     logger.info("Loading preference data...")
     try:
         preference_data = load_json_data(config.data.preference_data_path)
     except FileNotFoundError:
         logger.error(f"Could not find preference data at {config.data.preference_data_path}")
-        logger.error("Please run: python src/utils.py to create sample data")
+        logger.error("Please run: python scripts/prepare_data.py --max_samples 10000")
         return
     
     required_keys = ['chosen', 'rejected']
@@ -123,12 +122,12 @@ def train_reward_model(config: AssignmentConfig):
     
     logger.info(f"Loaded {len(preference_data)} preference pairs")
 
-    train_data, val_data, test_data = split_data(
-        preference_data,
-        config.data.train_split_ratio,
-        config.data.validation_split_ratio,
-        config.data.test_split_ratio
-    )
+    data_dir = os.path.dirname(config.data.preference_data_path)
+    train_data = preference_data
+    val_data = load_json_data(os.path.join(data_dir, "preference_data_val.json"))
+    test_data = load_json_data(os.path.join(data_dir, "preference_data_test.json"))
+    if not all((train_data, val_data, test_data)):
+        raise ValueError("Training, validation, and test preference splits must be nonempty")
     
     train_dataset = PreferenceDataset(train_data)
     val_dataset = PreferenceDataset(val_data)
@@ -172,7 +171,7 @@ def train_reward_model(config: AssignmentConfig):
     logger.info("Starting reward model training...")
     start_time = time.time()
     
-    best_val_accuracy = 0.0
+    best_val_accuracy = float("-inf")
     steps_since_improvement = 0
     global_step = 0
     
@@ -206,9 +205,9 @@ def train_reward_model(config: AssignmentConfig):
             step_metrics = trainer.train_step(batch_data)
             
             for key, value in step_metrics.items():
-                train_metrics[f'train_{key}'] += value
+                train_metrics[f'train_{key}'] += value * len(batch_data['chosen'])
             
-            train_steps += 1
+            train_steps += len(batch_data['chosen'])
             global_step += 1
             
             train_progress.set_postfix({
@@ -252,9 +251,9 @@ def train_reward_model(config: AssignmentConfig):
                 step_metrics = trainer.evaluate_step(batch_data)
                 
                 for key, value in step_metrics.items():
-                    val_metrics[f'val_{key}'] += value
+                    val_metrics[f'val_{key}'] += value * len(batch_data['chosen'])
                 
-                val_steps += 1
+                val_steps += len(batch_data['chosen'])
                 
                 val_progress.set_postfix({
                     'loss': step_metrics['loss'],
@@ -315,7 +314,10 @@ def train_reward_model(config: AssignmentConfig):
     training_time = time.time() - start_time
     logger.info(f"Training completed in {training_time:.2f} seconds")
     
-    logger.info("Evaluating on test set...")
+    logger.info("Evaluating the selected reward model on the test set...")
+    trainer.model = load_reward_model(
+        os.path.join(config.system.reward_model_dir, "best_reward_model.pt"), device
+    )
     test_loader_fn = create_data_loader(test_dataset, config.data.eval_batch_size, shuffle=False)()
     
     test_metrics = {
@@ -335,9 +337,9 @@ def train_reward_model(config: AssignmentConfig):
                 step_metrics = trainer.evaluate_step(batch_data)
                 
                 for key, value in step_metrics.items():
-                    test_metrics[f'test_{key}'] += value
+                    test_metrics[f'test_{key}'] += value * len(batch_data['chosen'])
                 
-                test_steps += 1
+                test_steps += len(batch_data['chosen'])
             except StopIteration:
                 break
     
@@ -376,7 +378,7 @@ def train_reward_model(config: AssignmentConfig):
     
     logger.info(f"Training completed successfully!")
     logger.info(f"Best validation accuracy: {best_val_accuracy:.4f}")
-    logger.info(f"Final test accuracy: {test_metrics['test_accuracy']:.4f}")
+    logger.info(f"Selected model test accuracy: {test_metrics['test_accuracy']:.4f}")
     logger.info(f"Models saved to: {config.system.reward_model_dir}")
 
 
@@ -392,39 +394,39 @@ def main():
     parser.add_argument(
         "--model_name",
         type=str,
-        default="distilbert-base-uncased",
+        default=None,
         help="Name of the base model for reward model"
     )
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=2e-5,
+        default=None,
         help="Learning rate for training"
     )
     parser.add_argument(
         "--num_epochs",
         type=int,
-        default=3,
+        default=None,
         help="Number of training epochs"
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=4,
+        default=None,
         help="Training batch size"
     )
     
     args = parser.parse_args()
     
-    config = get_config()
+    config = load_config_from_file(args.config) if args.config else get_config()
     
-    if args.model_name:
+    if args.model_name is not None:
         config.model.reward_model_name = args.model_name
-    if args.learning_rate:
+    if args.learning_rate is not None:
         config.training.reward_learning_rate = args.learning_rate
-    if args.num_epochs:
+    if args.num_epochs is not None:
         config.training.reward_num_epochs = args.num_epochs
-    if args.batch_size:
+    if args.batch_size is not None:
         config.data.train_batch_size = args.batch_size
     
     config.validate()

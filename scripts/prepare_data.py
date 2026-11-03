@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Data Preparation Script for Assignment 7.
+Data Preparation Script for Assignment 6.
 This script downloads and prepares the Anthropic HH-RLHF dataset from Hugging Face.
 """
 
@@ -13,7 +13,7 @@ from typing import List, Dict, Any, Tuple
 from tqdm import tqdm
 
 # Add src to path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 try:
     from datasets import load_dataset
@@ -22,7 +22,7 @@ except ImportError:
     DATASETS_AVAILABLE = False
     print("Datasets library not available. Please install with: pip install datasets")
 
-from utils import save_json_data
+from src.utils import save_json_data
 
 
 def load_hh_rlhf_dataset(max_samples: int = 1000) -> Tuple[List[Dict], List[Dict]]:
@@ -40,54 +40,30 @@ def load_hh_rlhf_dataset(max_samples: int = 1000) -> Tuple[List[Dict], List[Dict
     
     print("📥 Loading Anthropic HH-RLHF dataset from Hugging Face...")
     
-    # Load the dataset
-    try:
-        # Load both helpful and harmless subsets
-        helpful_dataset = load_dataset("Anthropic/hh-rlhf", data_dir="helpful-base", split="train")
-        harmless_dataset = load_dataset("Anthropic/hh-rlhf", data_dir="harmless-base", split="train")
-        
-        print(f"Loaded {len(helpful_dataset)} helpful examples")
-        print(f"Loaded {len(harmless_dataset)} harmless examples")
-        
-    except Exception as e:
-        print(f"Failed to load dataset: {e}")
-        print("Falling back to sample data...")
-        return create_fallback_data(max_samples)
-    
-    # Combine and shuffle datasets
+    if max_samples < 10:
+        raise ValueError("max_samples must be at least 10")
+    helpful = load_dataset("Anthropic/hh-rlhf", data_dir="helpful-base", split="train")
+    harmless = load_dataset("Anthropic/hh-rlhf", data_dir="harmless-base", split="train")
+    # Shuffle each subset before sampling and alternate to represent both sources.
+    helpful = helpful.shuffle(seed=random.randrange(2**32))
+    harmless = harmless.shuffle(seed=random.randrange(2**32))
     all_data = []
-    
-    # Process helpful examples
-    for i, example in enumerate(helpful_dataset):
-        if len(all_data) >= max_samples:
-            break
-            
-        processed_example = process_hh_example(example)
-        if processed_example:
-            all_data.append(processed_example)
-    
-    # Add harmless examples if we need more
-    remaining_samples = max_samples - len(all_data)
-    if remaining_samples > 0:
-        for i, example in enumerate(harmless_dataset):
+    seen = set()
+    for index in range(max(len(helpful), len(harmless))):
+        for dataset in (helpful, harmless):
+            if index >= len(dataset):
+                continue
+            example = process_hh_example(dataset[index])
+            if example and example['prompt'] not in seen:
+                seen.add(example['prompt'])
+                all_data.append(example)
             if len(all_data) >= max_samples:
                 break
-                
-            processed_example = process_hh_example(example)
-            if processed_example:
-                all_data.append(processed_example)
-    
-    # Shuffle the combined data
+        if len(all_data) >= max_samples:
+            break
     random.shuffle(all_data)
-    
-    print(f"✅ Processed {len(all_data)} total examples")
-    
-    # Split into train/validation
-    split_idx = int(len(all_data) * 0.9)  # 90% train, 10% validation
-    train_data = all_data[:split_idx]
-    val_data = all_data[split_idx:]
-    
-    return train_data, val_data
+    # Splitting is performed once by prepare_dataset.
+    return all_data, []
 
 
 def process_hh_example(example: Dict) -> Dict:
@@ -112,18 +88,15 @@ def process_hh_example(example: Dict) -> Dict:
         # The format is typically: "Human: ... Assistant: ... Human: ... Assistant:"
         # We want to extract up to the last "Assistant:" as the prompt
         
-        # Find the last occurrence of "Assistant:" in chosen response
-        last_assistant_idx = chosen.rfind("Assistant:")
-        if last_assistant_idx == -1:
+        marker = "\n\nAssistant:"
+        chosen_prefix, separator, chosen_response = chosen.rpartition(marker)
+        rejected_prefix, rejected_separator, rejected_response = rejected.rpartition(marker)
+        if not separator or not rejected_separator or chosen_prefix != rejected_prefix:
             return None
-        
-        # Extract prompt (everything up to and including the last "Assistant:")
-        prompt = chosen[:last_assistant_idx + len("Assistant:")].strip()
-        
-        # Extract the actual responses (everything after "Assistant:")
-        chosen_response = chosen[last_assistant_idx + len("Assistant:"):].strip()
-        rejected_response = rejected[last_assistant_idx + len("Assistant:"):].strip()
-        
+        prompt = (chosen_prefix + marker).strip()
+        chosen_response = chosen_response.strip()
+        rejected_response = rejected_response.strip()
+
         # Skip if responses are too short or too long
         if len(chosen_response) < 10 or len(chosen_response) > 500:
             return None
@@ -139,52 +112,6 @@ def process_hh_example(example: Dict) -> Dict:
     except Exception as e:
         print(f"⚠️  Error processing example: {e}")
         return None
-
-
-def create_fallback_data(max_samples: int) -> Tuple[List[Dict], List[Dict]]:
-    """
-    Create fallback data if the main dataset cannot be loaded.
-    
-    Args:
-        max_samples: Number of samples to create
-        
-    Returns:
-        Tuple of (training_data, validation_data)
-    """
-    print("🔄 Creating fallback sample data...")
-    
-    # Sample conversations in HH-RLHF format
-    sample_data = [
-        {
-            'prompt': 'Human: How can I be more productive at work?\n\nAssistant:',
-            'chosen': 'Human: How can I be more productive at work?\n\nAssistant: Here are some evidence-based strategies for improving workplace productivity:\n\n1. **Prioritize tasks** using methods like the Eisenhower Matrix to focus on important and urgent work\n2. **Time-block your calendar** to dedicate specific periods to focused work\n3. **Minimize distractions** by turning off non-essential notifications\n4. **Take regular breaks** to maintain focus and prevent burnout\n5. **Use productivity tools** like task managers and note-taking apps\n\nThe key is finding what works for your specific role and work style, then being consistent with those practices.',
-            'rejected': 'Human: How can I be more productive at work?\n\nAssistant: Just work harder and longer hours. Productivity is about grinding through tasks and never taking breaks. Sleep is for the weak.'
-        },
-        {
-            'prompt': 'Human: What\'s the best way to learn a new programming language?\n\nAssistant:',
-            'chosen': 'Human: What\'s the best way to learn a new programming language?\n\nAssistant: Here\'s an effective approach to learning a new programming language:\n\n1. **Start with fundamentals** - Learn the basic syntax, data types, and control structures\n2. **Practice regularly** - Code a little bit every day rather than long cramming sessions\n3. **Build projects** - Start with simple programs and gradually increase complexity\n4. **Read others\' code** - Study well-written code to learn best practices\n5. **Join communities** - Participate in forums, Discord servers, or local meetups\n6. **Use official documentation** - Get comfortable reading and using the language\'s docs\n\nThe key is balancing theory with hands-on practice. Don\'t just read about programming - write code!',
-            'rejected': 'Human: What\'s the best way to learn a new programming language?\n\nAssistant: Just memorize all the syntax and functions. Once you know all the commands, you\'ll be a great programmer. Don\'t worry about actually writing code or understanding concepts.'
-        },
-        {
-            'prompt': 'Human: I\'m feeling overwhelmed with my workload. Any advice?\n\nAssistant:',
-            'chosen': 'Human: I\'m feeling overwhelmed with my workload. Any advice?\n\nAssistant: I understand that feeling overwhelmed can be really stressful. Here are some strategies that might help:\n\n1. **List everything out** - Write down all your tasks to get them out of your head\n2. **Prioritize ruthlessly** - Identify what\'s truly urgent vs. what can wait\n3. **Break large tasks down** - Divide big projects into smaller, manageable steps\n4. **Delegate when possible** - See if others can help with some responsibilities\n5. **Set boundaries** - It\'s okay to say no to additional requests when you\'re at capacity\n6. **Take care of yourself** - Ensure you\'re getting enough sleep, food, and exercise\n\nRemember, this feeling is temporary. Focus on one task at a time and celebrate small wins along the way.',
-            'rejected': 'Human: I\'m feeling overwhelmed with my workload. Any advice?\n\nAssistant: Stop complaining and just work harder. Everyone feels overwhelmed sometimes, you just need to push through it. Don\'t be weak.'
-        }
-    ]
-    
-    # Duplicate and vary the sample data to reach max_samples
-    extended_data = []
-    while len(extended_data) < max_samples:
-        for base_example in sample_data:
-            if len(extended_data) >= max_samples:
-                break
-            extended_data.append(base_example.copy())
-    
-    # Shuffle and split
-    random.shuffle(extended_data)
-    split_idx = int(len(extended_data) * 0.9)
-    
-    return extended_data[:split_idx], extended_data[split_idx:]
 
 
 def create_prompts_from_preferences(preference_data: List[Dict]) -> List[Dict]:
@@ -226,7 +153,7 @@ def prepare_dataset(
         test_ratio: Ratio for test set
     """
     # Validate ratios
-    if abs(train_ratio + val_ratio + test_ratio - 1.0) > 1e-6:
+    if any(not 0 < ratio < 1 for ratio in (train_ratio, val_ratio, test_ratio)) or abs(train_ratio + val_ratio + test_ratio - 1.0) > 1e-6:
         raise ValueError("Train, validation, and test ratios must sum to 1.0")
     
     # Create output directory
@@ -238,11 +165,14 @@ def prepare_dataset(
     else:
         raise ValueError(f"Dataset {dataset_name} not supported yet")
     
-    # Further split validation data into val/test
-    val_split_idx = int(len(val_data) * (val_ratio / (val_ratio + test_ratio)))
-    test_data = val_data[val_split_idx:]
-    val_data = val_data[:val_split_idx]
-    
+    train_end = int(len(train_data) * train_ratio)
+    val_end = train_end + int(len(train_data) * val_ratio)
+    train_data, val_data, test_data = (
+        train_data[:train_end], train_data[train_end:val_end], train_data[val_end:]
+    )
+    if not all((train_data, val_data, test_data)):
+        raise ValueError("Not enough valid examples for nonempty train/validation/test splits")
+
     print(f"📊 Data splits:")
     print(f"   Training: {len(train_data)} examples")
     print(f"   Validation: {len(val_data)} examples") 
@@ -259,6 +189,7 @@ def prepare_dataset(
     # Save all data files
     save_json_data(train_prompts, os.path.join(output_dir, "train_prompts.json"))
     save_json_data(eval_prompts, os.path.join(output_dir, "eval_prompts.json"))
+    save_json_data(create_prompts_from_preferences(val_data), os.path.join(output_dir, "val_prompts.json"))
     save_json_data(train_data, os.path.join(output_dir, "preference_data.json"))
     save_json_data(val_data, os.path.join(output_dir, "preference_data_val.json"))
     save_json_data(test_data, os.path.join(output_dir, "preference_data_test.json"))
@@ -290,6 +221,9 @@ def validate_data(data_dir: str = "data"):
     required_files = [
         ("train_prompts.json", ["prompt"]),
         ("eval_prompts.json", ["prompt"]),
+        ("val_prompts.json", ["prompt"]),
+        ("preference_data_val.json", ["prompt", "chosen", "rejected"]),
+        ("preference_data_test.json", ["prompt", "chosen", "rejected"]),
         ("preference_data.json", ["prompt", "chosen", "rejected"]),
     ]
     
@@ -318,7 +252,7 @@ def validate_data(data_dir: str = "data"):
                 continue
             
             # Check required keys
-            for i, item in enumerate(data[:5]):  # Check first 5 items
+            for i, item in enumerate(data):
                 if not isinstance(item, dict):
                     print(f"{filename}: Item {i} should be a dictionary")
                     all_valid = False
@@ -343,11 +277,12 @@ def validate_data(data_dir: str = "data"):
         print("All data files are valid!")
     else:
         print("Some data files have issues. Please run preparation again.")
+    return all_valid
 
 
 def main():
     """Main function."""
-    parser = argparse.ArgumentParser(description="Prepare training data for Assignment 7")
+    parser = argparse.ArgumentParser(description="Prepare training data for Assignment 6")
     parser.add_argument(
         "--dataset",
         type=str,
@@ -384,7 +319,8 @@ def main():
     random.seed(args.seed)
     
     if args.validate:
-        validate_data(args.output_dir)
+        if not validate_data(args.output_dir):
+            sys.exit(1)
     else:
         try:
             prepare_dataset(
