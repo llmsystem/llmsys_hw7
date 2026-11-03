@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script to run RLHF training for Assignment 7.
+Script to run RLHF training for Assignment 6.
 This script loads a trained reward model and runs PPO training on a language model.
 """
 

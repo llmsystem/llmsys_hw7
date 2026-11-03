@@ -41,7 +41,7 @@ def main():
         parser.error('--timeout must be positive')
     log = ''
     try:
-        with tempfile.TemporaryDirectory(prefix='hw7-check-') as temporary:
+        with tempfile.TemporaryDirectory(prefix='hw6-check-') as temporary:
             directory = Path(temporary).resolve()
             environment = os.environ.copy()
             environment.update({'HF_HUB_OFFLINE': '1', 'HF_DATASETS_OFFLINE': '1',

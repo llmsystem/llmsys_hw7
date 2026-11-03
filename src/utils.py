@@ -1,5 +1,5 @@
 """
-Utility functions for Assignment 7 - RLHF Training.
+Utility functions for Assignment 6 - RLHF Training.
 This module contains helper functions for data processing, logging, and evaluation.
 """
 

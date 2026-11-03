@@ -1,4 +1,4 @@
-# Assignment 7: Introduction to RLHF
+# Assignment 6: Introduction to RLHF
 
 **CMU 11-868 LLM Systems — Fall 2026**
 
@@ -22,8 +22,8 @@ Read the [RLHF introduction](https://huggingface.co/blog/rlhf) and [PPO paper](h
 Use Python 3.10–3.13. A CUDA GPU is recommended for the full training run. CPU is sufficient for the offline unit tests, but full training is much slower. The default pipeline keeps separate policy, reference, and value backbones in memory; lower the rollout batch size and sequence length if memory is limited. Mixed precision and distributed training are not implemented.
 
 ```bash
-git clone https://github.com/llmsystem/llmsys_hw7.git
-cd llmsys_hw7
+git clone https://github.com/llmsystem/llmsys_hw7.git llmsys_hw6
+cd llmsys_hw6
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -53,7 +53,7 @@ Prepare the dataset before running the training scripts. Use validation data for
 
 ## Problem 1: Reward model (40 points)
 
-Complete `RewardModelTrainer.compute_loss` in `src/reward_model.py` (`ASSIGN7_1`). The provided model uses a pretrained DistilBERT encoder, its first-token representation, and a scalar reward head.
+Complete `RewardModelTrainer.compute_loss` in `src/reward_model.py` (`ASSIGN6_1`). The provided model uses a pretrained DistilBERT encoder, its first-token representation, and a scalar reward head.
 
 1. Compute one reward per chosen and rejected conversation.
 2. Use the provided `MarginRankingLoss` with margin 1 and positive targets, so chosen responses should receive higher scores.
@@ -69,9 +69,9 @@ The script selects `outputs/reward_model/best_reward_model.pt` by validation pre
 
 Complete the three marked sections in `src/rlhf_trainer.py`:
 
-- `_compute_gae` (`ASSIGN7_2_1`): the simplified one-step TD advantage calculation described in the code comments.
-- `_train_step_custom` (`ASSIGN7_2_2`): clipped surrogate policy loss and entropy bonus.
-- `_compute_entropy` (`ASSIGN7_2_3`): categorical entropy from logits, averaged over supplied valid response states.
+- `_compute_gae` (`ASSIGN6_2_1`): the simplified one-step TD advantage calculation described in the code comments.
+- `_train_step_custom` (`ASSIGN6_2_2`): clipped surrogate policy loss and entropy bonus.
+- `_compute_entropy` (`ASSIGN6_2_3`): categorical entropy from logits, averaged over supplied valid response states.
 
 Use one-step TD targets: each valid response state receives its immediate reward plus a discounted next-state value, and its advantage is the target minus its current value. The final response state receives the sequence reward with zero bootstrap value. `ppo_gae_lambda` is unused in this simplified calculation.
 
@@ -152,7 +152,7 @@ python scripts/submission.py --andrew-id YOUR_ANDREW_ID
 
 You may optionally attach notes with `--report report.md` (or PDF) and exact commands with `--commands commands.txt`.
 
-The script creates `assignment7_YOUR_ANDREW_ID.zip`. Missing experiment evidence stops packaging and identifies the missing file. The script also runs the public student self-check and includes its JSON feedback. You can package a submission with failed implementation tests. Resolve setup errors before packaging. The script never deletes local checkpoints or overwrites an existing archive; use `--output another_name.zip` for a new archive.
+The script creates `assignment6_YOUR_ANDREW_ID.zip`. Missing experiment evidence stops packaging and identifies the missing file. The script also runs the public student self-check and includes its JSON feedback. You can package a submission with failed implementation tests. Resolve setup errors before packaging. The script never deletes local checkpoints or overwrites an existing archive; use `--output another_name.zip` for a new archive.
 
 The archive includes only:
 

@@ -84,7 +84,7 @@ def build_submission(root, andrew_id, report, commands, output, check_path=None)
                        for dist in importlib.metadata.distributions() if dist.metadata['Name']})
     add('package_versions.txt', ('\n'.join(versions) + '\n').encode())
     manifest = {
-        'assignment': 7, 'term': 'Fall 2026', 'andrew_id': andrew_id,
+        'assignment': 6, 'term': 'Fall 2026', 'andrew_id': andrew_id,
         'checkpoints_included': False,
         'files': {name: {'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
                   for name, data in sorted(files.items())},
@@ -113,7 +113,7 @@ def main():
     parser.add_argument('--andrew-id', required=True)
     parser.add_argument('--report', type=Path, help='Optional PDF or Markdown notes')
     parser.add_argument('--commands', type=Path, help='Text file with exact experiment commands')
-    parser.add_argument('--output', type=Path, help='Default: assignment7_ANDREW_ID.zip')
+    parser.add_argument('--output', type=Path, help='Default: assignment6_ANDREW_ID.zip')
     args = parser.parse_args()
     try:
         for name in REQUIRED_EVIDENCE:
@@ -122,7 +122,7 @@ def main():
             checked_bytes(args.report)
         if args.commands is not None:
             checked_bytes(args.commands)
-        output = args.output or Path(f'assignment7_{args.andrew_id}.zip')
+        output = args.output or Path(f'assignment6_{args.andrew_id}.zip')
         with tempfile.TemporaryDirectory() as temporary:
             check_path = Path(temporary) / 'self_check.json'
             result = subprocess.run([sys.executable, str(ROOT / 'scripts/check_implementation.py'),

@@ -1,5 +1,5 @@
 """
-Single-device, verl-inspired PPO training scaffold for Assignment 7.
+Single-device, verl-inspired PPO training scaffold for Assignment 6.
 """
 
 import copy
@@ -456,7 +456,7 @@ class VERLTrainer:
         Returns:
             Tuple of (advantages, returns)
         """
-        # BEGIN ASSIGN7_2_1
+        # BEGIN ASSIGN6_2_1
         # TODO: Implement the one-step TD estimate.
         # values[:, t] predicts the value before action token t+1.
         # Put the sequence reward on the last valid response state; zero elsewhere.
@@ -465,9 +465,9 @@ class VERLTrainer:
         # Use zero bootstrap after the final response state, including length limits.
         # Return (advantages, targets), with zeros outside the response-state mask.
         # Full recursive GAE and gae_lambda are not required.
-        raise NotImplementedError("Need to implement GAE computation for Assignment 7")
+        raise NotImplementedError("Need to implement GAE computation for Assignment 6")
         
-        # END ASSIGN7_2_1
+        # END ASSIGN6_2_1
         
         return advantages, returns
     
@@ -529,7 +529,7 @@ class VERLTrainer:
             
             advantages = rollout_batch.advantages[:, prompt_len - 1 : -1][new_log_probs_mask]
             
-            # BEGIN ASSIGN7_2_2
+            # BEGIN ASSIGN6_2_2
             # TODO: Compute PPO loss
             # 1. Compute probability ratio: exp(new_log_probs - old_log_probs)
             # 2. Compute surrogate losses:
@@ -538,9 +538,9 @@ class VERLTrainer:
             # 3. Policy loss = -min(surr1, surr2).mean()
             # 4. Compute entropy bonus with self._compute_entropy(scores[new_log_probs_mask]).
             #    Exclude prompt and padding positions from every loss reduction.
-            raise NotImplementedError("Need to implement PPO loss computation for Assignment 7")
+            raise NotImplementedError("Need to implement PPO loss computation for Assignment 6")
             
-            # END ASSIGN7_2_2
+            # END ASSIGN6_2_2
 
             # Compute KL divergence for monitoring
             # k3 described in http://joschu.net/blog/kl-approx.html
@@ -610,15 +610,15 @@ class VERLTrainer:
         Returns:
             Entropy values
         """
-        # BEGIN ASSIGN7_2_3
+        # BEGIN ASSIGN6_2_3
         # TODO: Compute entropy from logits
         # 1. Convert logits to probabilities using softmax
         # 2. Convert logits to log_probabilities using log_softmax
         # 3. Compute entropy: -(probs * log_probs).sum(dim=-1)
         # 4. Return a scalar mean over the supplied valid response states
-        raise NotImplementedError("Need to implement entropy computation for Assignment 7")
+        raise NotImplementedError("Need to implement entropy computation for Assignment 6")
         
-        # END ASSIGN7_2_3
+        # END ASSIGN6_2_3
     
     def save_checkpoint(self, checkpoint_path: str, epoch: int, metrics: Dict[str, float]):
         """

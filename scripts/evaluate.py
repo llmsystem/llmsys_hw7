@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Evaluation script for Assignment 7.
+Evaluation script for Assignment 6.
 This script evaluates and compares the base model and RLHF-trained model.
 """
 
@@ -521,7 +521,7 @@ def evaluate_models(config: AssignmentConfig):
 
 def main():
     """Main function."""
-    parser = argparse.ArgumentParser(description="Evaluate models for Assignment 7")
+    parser = argparse.ArgumentParser(description="Evaluate models for Assignment 6")
     parser.add_argument(
         "--config",
         type=str,

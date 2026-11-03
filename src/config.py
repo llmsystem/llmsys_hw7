@@ -1,5 +1,5 @@
 """
-Configuration file for Assignment 7 - RLHF Training
+Configuration file for Assignment 6 - RLHF Training
 This file contains all configuration parameters for the RLHF pipeline.
 """
 
@@ -152,7 +152,7 @@ class ExperimentConfig:
     """Experiment tracking and evaluation configuration."""
     
     # Experiment tracking
-    wandb_project: str = "llmsys_assignment7"
+    wandb_project: str = "llmsys_assignment6"
     wandb_entity: Optional[str] = None
     experiment_name: str = "verl_rlhf_baseline"
     

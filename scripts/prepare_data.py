@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Data Preparation Script for Assignment 7.
+Data Preparation Script for Assignment 6.
 This script downloads and prepares the Anthropic HH-RLHF dataset from Hugging Face.
 """
 
@@ -282,7 +282,7 @@ def validate_data(data_dir: str = "data"):
 
 def main():
     """Main function."""
-    parser = argparse.ArgumentParser(description="Prepare training data for Assignment 7")
+    parser = argparse.ArgumentParser(description="Prepare training data for Assignment 6")
     parser.add_argument(
         "--dataset",
         type=str,

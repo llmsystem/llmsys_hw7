@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script to train the reward model for Assignment 7.
+Script to train the reward model for Assignment 6.
 This script loads preference data and trains a reward model using pairwise ranking loss.
 """
 

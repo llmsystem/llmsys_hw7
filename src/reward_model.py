@@ -1,5 +1,5 @@
 """
-Reward Model Implementation for Assignment 7.
+Reward Model Implementation for Assignment 6.
 This module contains the reward model used in the RLHF pipeline.
 """
 
@@ -283,7 +283,7 @@ class RewardModelTrainer:
         Returns:
             Tuple of (scalar loss, chosen rewards, rejected rewards)
         """
-        # BEGIN ASSIGN7_1
+        # BEGIN ASSIGN6_1
         # TODO: Compute rewards for chosen and rejected responses
         # Get rewards using the model's forward pass
         # Compute ranking loss: chosen should have higher reward than rejected
@@ -291,8 +291,8 @@ class RewardModelTrainer:
         # 2. Get rewards for rejected responses
         # 3. Compute ranking loss: chosen should have higher reward than rejected
 
-        raise NotImplementedError("Need to implement loss computation for Assignment 7")
-        # END ASSIGN7_1
+        raise NotImplementedError("Need to implement loss computation for Assignment 6")
+        # END ASSIGN6_1
     
     def train_step(self, batch: Dict) -> Dict[str, float]:
         """

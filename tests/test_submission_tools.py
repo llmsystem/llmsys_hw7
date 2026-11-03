@@ -53,6 +53,7 @@ def test_package_excludes_gigabyte_weights_and_hidden_files(bundle_inputs):
         assert 'src/.secret.py' not in names
         assert 'scripts/autograde.py' not in names
         assert 'logs/grading_results.json' not in names
+        assert manifest['assignment'] == 6
         assert manifest['files']['report.md']['bytes'] == len('Experiment report')
     assert output.stat().st_size < 1024**2
 
