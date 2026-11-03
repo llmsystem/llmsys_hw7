@@ -2,8 +2,6 @@
 
 **CMU 11-868 LLM Systems — Fall 2026**
 
-This README contains the updated instructions for Fall 2026. Where it differs from the archived assignment webpage, follow this README.
-
 ## Overview
 
 Implement a small reinforcement learning from human feedback (RLHF) pipeline: train a reward model on human preference pairs, then optimize GPT-2 using proximal policy optimization (PPO). The code separates rollout generation from policy updates, taking inspiration from [verl](https://verl.readthedocs.io/en/latest/) and [HybridFlow](https://arxiv.org/abs/2409.19256). It is a single-device PyTorch teaching implementation; it does not use the verl package, distributed workers, or HybridFlow's execution engine.
