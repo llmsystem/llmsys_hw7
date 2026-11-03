@@ -1,10 +1,13 @@
-# Single-device teaching implementation; the external verl package is not used.
+# Core dependencies
 torch>=2.2,<3
 transformers>=4.46,<5
 datasets>=2.21,<4
+# Data processing and visualization
 numpy>=1.26,<3
 pandas>=2.0,<4
 matplotlib>=3.8,<4
 tqdm>=4.65,<5
+# Configuration
 pyyaml>=6,<7
+# Testing
 pytest>=7.3,<10
