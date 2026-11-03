@@ -215,3 +215,5 @@ evaluation_results/
 
 # Local submission artifacts
 assignment7_*.zip
+self_check.json
+self_check.log

@@ -6,6 +6,8 @@ import importlib.metadata
 import json
 from pathlib import Path
 import re
+import subprocess
+import sys
 import tempfile
 import zipfile
 
@@ -34,7 +36,7 @@ def checked_bytes(path):
     return data
 
 
-def build_submission(root, andrew_id, report, commands, output):
+def build_submission(root, andrew_id, report, commands, output, check_path=None):
     root, output = Path(root), Path(output)
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}', andrew_id):
         raise ValueError('Use your Andrew ID (letters, digits, underscore, or hyphen)')
@@ -70,6 +72,12 @@ def build_submission(root, andrew_id, report, commands, output):
                 add(relative.as_posix(), checked_bytes(path))
     add('report' + Path(report).suffix.lower(), checked_bytes(Path(report)))
     add('commands.txt', checked_bytes(Path(commands)))
+    if check_path is not None:
+        check_data = checked_bytes(Path(check_path))
+        check = json.loads(check_data)
+        if check.get('status') not in {'passed', 'failed'}:
+            raise ValueError('Student self-check could not finish; fix its setup and retry')
+        add('self_check.json', check_data)
     versions = sorted({f'{dist.metadata["Name"]}=={dist.version}'
                        for dist in importlib.metadata.distributions() if dist.metadata['Name']})
     add('package_versions.txt', ('\n'.join(versions) + '\n').encode())
@@ -106,8 +114,19 @@ def main():
     parser.add_argument('--output', type=Path, help='Default: assignment7_ANDREW_ID.zip')
     args = parser.parse_args()
     try:
+        for name in REQUIRED_EVIDENCE:
+            checked_bytes(ROOT / name)
+        checked_bytes(args.report)
+        checked_bytes(args.commands)
         output = args.output or Path(f'assignment7_{args.andrew_id}.zip')
-        manifest = build_submission(ROOT, args.andrew_id, args.report, args.commands, output)
+        with tempfile.TemporaryDirectory() as temporary:
+            check_path = Path(temporary) / 'self_check.json'
+            result = subprocess.run([sys.executable, str(ROOT / 'scripts/check_implementation.py'),
+                                     '--output', str(check_path)], cwd=ROOT)
+            if result.returncode not in (0, 1):
+                raise ValueError('Student self-check setup failed; see its output')
+            manifest = build_submission(ROOT, args.andrew_id, args.report, args.commands,
+                                        output, check_path=check_path)
         print(f'Created {output.resolve()} ({output.stat().st_size / 1024**2:.2f} MiB; '
               f'{len(manifest["files"]) + 1} files). No checkpoints or datasets included.')
     except (OSError, ValueError, zipfile.BadZipFile) as error:

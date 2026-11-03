@@ -144,11 +144,14 @@ For PPO, `training.ppo_kl_penalty` controls the reference KL coefficient (defaul
 
 ```bash
 python -m pytest tests/ -v
+python scripts/check_implementation.py
 ```
 
 Tests use small randomly initialized local models and require no model downloads, GPU, or checkpoints. They check numerical contracts and framework behavior, not the 60% accuracy requirement or full-scale convergence. Tests that exercise unfinished student sections raise `NotImplementedError` until those sections are completed; this is expected in the starter repository. Complete the marked sections and run the tests before submitting.
 
-Staff assess correctness using their own tests along with the submitted experiment evidence and report.
+`scripts/check_implementation.py` is the student self-check tool. It runs the public tests with Hugging Face downloads disabled and writes per-test feedback to `self_check.json` and `self_check.log`. It does not assign course points. Exit codes are 0 for passing all tests, 1 for failed/skipped tests, and 2 for setup errors or timeout (default 300 seconds; change with `--timeout`). The starter code will report failed tests until you implement its TODOs.
+
+Staff use a separate, unpublished grading tool and their own tests, along with the submitted experiment evidence and report. Student self-check results are feedback, not an official grade.
 
 ## Submission and grading
 
@@ -171,12 +174,12 @@ python scripts/submission.py --andrew-id YOUR_ANDREW_ID \
   --report report.pdf --commands commands.txt
 ```
 
-The script creates `assignment7_YOUR_ANDREW_ID.zip`. Missing experiment evidence stops packaging and identifies the missing file. Packaging checks the submission contents and file sizes; it does not grade your implementation. The script never deletes local checkpoints or overwrites an existing archive; use `--output another_name.zip` for a new archive.
+The script creates `assignment7_YOUR_ANDREW_ID.zip`. Missing experiment evidence stops packaging and identifies the missing file. The script also runs the public student self-check and includes its JSON feedback. Failed implementation tests still allow submission for partial credit; setup errors stop packaging. These checks do not assign course points. The script never deletes local checkpoints or overwrites an existing archive; use `--output another_name.zip` for a new archive.
 
 The archive includes only:
 
 - Python source under `src/`, `scripts/`, and `tests/`, plus the README and requirements.
-- Your report and exact commands, plus generated `package_versions.txt`.
+- Your report and exact commands, generated `package_versions.txt`, and student `self_check.json` feedback.
 - Small metrics, configurations, plots, and sample outputs from `logs/`, `plots/`, and `evaluation_results/`.
 - A `submission_manifest.json` recording your Andrew ID, file sizes, and SHA-256 hashes.
 
