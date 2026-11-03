@@ -140,7 +140,7 @@ Staff use a separate, unpublished grading tool and their own tests, along with t
 | RLHF training | 40 | Complete the trainer TODOs, pass the relevant tests, and demonstrate reward improvement in `plots/rlhf_training_curves.png` |
 | Evaluation | 20 | Run the base/trained comparison and submit `plots/reward_comparison.png` with its metrics and generated samples |
 
-These retain the original **40/40/20** problem totals. There is no additional fixed automatic/manual point split. Student self-check results support correctness checks; they are not the final course grade. Reward improvement is measured relative to your own baseline, rather than against a universal reward value such as −0.5 or +0.5. If the reward does not improve, include a brief explanation with the results so staff can assess the run.
+Reward improvement is measured relative to your own baseline, rather than against a universal reward value such as −0.5 or +0.5. If the reward does not improve, include a brief explanation with the results so staff can assess the run.
 
 ### Build the submission
 
