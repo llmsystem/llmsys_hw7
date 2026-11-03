@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the public offline tests and save feedback; this is not the staff grader."""
+"""Run the offline implementation tests and save feedback."""
 import argparse
 import json
 import os
@@ -29,7 +29,7 @@ def summarize(xml_path, exit_code):
               else 'failed' if exit_code == 1 or counts['failed'] or counts['skipped']
               else 'passed' if cases else 'error')
     return {'status': status, 'counts': counts, 'tests': cases,
-            'note': 'Public self-check only. Staff grade correctness and experiments separately.'}
+            'note': 'Implementation test results.'}
 
 
 def main():

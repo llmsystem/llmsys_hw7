@@ -4,7 +4,7 @@
 
 ## Overview
 
-Implement a small reinforcement learning from human feedback (RLHF) pipeline: train a reward model on human preference pairs, then optimize GPT-2 using proximal policy optimization (PPO). The code separates rollout generation from policy updates, taking inspiration from [verl](https://verl.readthedocs.io/en/latest/) and [HybridFlow](https://arxiv.org/abs/2409.19256). It is a single-device PyTorch teaching implementation; it does not use the verl package, distributed workers, or HybridFlow's execution engine.
+Implement a small reinforcement learning from human feedback (RLHF) pipeline: train a reward model on human preference pairs, then optimize GPT-2 using proximal policy optimization (PPO). The code separates rollout generation from policy updates, taking inspiration from [verl](https://verl.readthedocs.io/en/latest/) and [HybridFlow](https://arxiv.org/abs/2409.19256). The provided framework runs on a single device using PyTorch.
 
 The goal is to understand reward learning, token-level advantages, and PPO, and to examine the limitations of optimizing a learned reward. A small reward model and a base GPT-2 model do not guarantee helpful or harmless responses.
 
@@ -49,7 +49,7 @@ The [Anthropic HH-RLHF dataset](https://huggingface.co/datasets/Anthropic/hh-rlh
 | `data/val_prompts.json` | Policy validation and checkpoint selection |
 | `data/eval_prompts.json` | Final policy evaluation on the test split |
 
-Training scripts require prepared data. Download errors stop preparation rather than silently substituting artificial examples. Do not use toy data or the test prompts for checkpoint selection or hyperparameter tuning. Reward tokenization truncates from the left to retain the final response; long conversation prefixes may be dropped.
+Prepare the dataset before running the training scripts. Use validation data for checkpoint selection and hyperparameter tuning, and reserve test data for final evaluation. Reward tokenization truncates from the left to retain the final response; long conversation prefixes may be dropped.
 
 ## Problem 1: Reward model (40 points)
 
@@ -69,15 +69,15 @@ The script selects `outputs/reward_model/best_reward_model.pt` by validation pre
 
 Complete the three marked sections in `src/rlhf_trainer.py`:
 
-- `_compute_gae` (`ASSIGN7_2_1`): the simplified one-step TD advantage calculation described in the code comments. The method name is retained for compatibility; full recursive GAE is not required.
+- `_compute_gae` (`ASSIGN7_2_1`): the simplified one-step TD advantage calculation described in the code comments.
 - `_train_step_custom` (`ASSIGN7_2_2`): clipped surrogate policy loss and entropy bonus.
 - `_compute_entropy` (`ASSIGN7_2_3`): categorical entropy from logits, averaged over supplied valid response states.
 
-The original scaffold uses one-step TD targets: each valid response state receives its immediate reward plus a discounted next-state value, and its advantage is the target minus its current value. The final response state receives the sequence reward with zero bootstrap value. `ppo_gae_lambda` is unused in this simplified calculation.
+Use one-step TD targets: each valid response state receives its immediate reward plus a discounted next-state value, and its advantage is the target minus its current value. The final response state receives the sequence reward with zero bootstrap value. `ppo_gae_lambda` is unused in this simplified calculation.
 
-The caller supplies a response-state mask: state position `t` predicts token `t+1`. Include the first EOS action, exclude padding and prompt-only states, and return zeros outside the mask. The other two TODOs implement the standard clipped PPO surrogate and categorical entropy. No additional model or algorithm is required.
+The caller supplies a response-state mask: state position `t` predicts token `t+1`. Include the first EOS action, exclude padding and prompt-only states, and return zeros outside the mask. The other two TODOs implement the standard clipped PPO surrogate and categorical entropy.
 
-Training rollouts sample from the unmodified policy distribution (temperature 1, top-p 1, top-k disabled), matching the log probabilities used by PPO. Evaluation may use temperature/top-p sampling. `rollout_max_length` is the total prompt-plus-response token limit; prompts are truncated to half that length. Each rollout batch is updated as a whole for `verl.ppo_epochs`; minibatching, adaptive KL, and gradient accumulation are not implemented. Related legacy configuration fields are inactive.
+Training rollouts sample from the unmodified policy distribution (temperature 1, top-p 1, top-k disabled), matching the log probabilities used by PPO. Evaluation may use temperature/top-p sampling. `rollout_max_length` is the total prompt-plus-response token limit; prompts are truncated to half that length. Each rollout batch is updated as a whole for `verl.ppo_epochs`.
 
 ```bash
 python scripts/run_rlhf.py --model_name gpt2
@@ -117,7 +117,7 @@ experiment:
   seed: 42
 ```
 
-For PPO, `training.ppo_kl_penalty` controls the reference KL coefficient (default 0), `training.ppo_value_coef` weights value regression, and `training.ppo_entropy_coef` controls entropy regularization. `verl.ppo_clip_eps` controls PPO clipping. Record the effective configuration and package versions with your report.
+For PPO, `training.ppo_kl_penalty` controls the reference KL coefficient (default 0), `training.ppo_value_coef` weights value regression, and `training.ppo_entropy_coef` controls entropy regularization. `verl.ppo_clip_eps` controls PPO clipping. The submission script includes the effective configurations and package versions.
 
 ## Tests
 
@@ -126,11 +126,9 @@ python -m pytest tests/ -v
 python scripts/check_implementation.py
 ```
 
-Tests use small randomly initialized local models and require no model downloads, GPU, or checkpoints. They check numerical contracts and framework behavior, not the 60% accuracy requirement or full-scale convergence. Tests that exercise unfinished student sections raise `NotImplementedError` until those sections are completed; this is expected in the starter repository. Complete the marked sections and run the tests before submitting.
+Tests run offline on CPU using small, locally initialized models. Complete the marked TODO sections and run the tests before submitting. Unfinished sections raise `NotImplementedError`.
 
-`scripts/check_implementation.py` is the student self-check tool. It runs the public tests with Hugging Face downloads disabled and writes per-test feedback to `self_check.json` and `self_check.log`. It does not assign course points. Exit codes are 0 for passing all tests, 1 for failed/skipped tests, and 2 for setup errors or timeout (default 300 seconds; change with `--timeout`). The starter code will report failed tests until you implement its TODOs.
-
-Staff use a separate, unpublished grading tool and their own tests, along with the submitted experiment evidence and report. Student self-check results are feedback, not an official grade.
+`scripts/check_implementation.py` is the student self-check tool. It runs the public tests with Hugging Face downloads disabled and writes per-test feedback to `self_check.json` and `self_check.log`. Exit codes are 0 for passing all tests, 1 for failed/skipped tests, and 2 for setup errors or timeout (default 300 seconds; change with `--timeout`).
 
 ## Submission and grading
 
@@ -140,13 +138,13 @@ Staff use a separate, unpublished grading tool and their own tests, along with t
 | RLHF training | 40 | Complete the trainer TODOs, pass the relevant tests, and demonstrate reward improvement in `plots/rlhf_training_curves.png` |
 | Evaluation | 20 | Run the base/trained comparison and submit `plots/reward_comparison.png` with its metrics and generated samples |
 
-Reward improvement is measured relative to your own baseline, rather than against a universal reward value such as −0.5 or +0.5. If the reward does not improve, include a brief explanation with the results so staff can assess the run.
+Compare rewards before and after RLHF training using the same trained reward model. If the reward does not improve, include a brief explanation with your results.
 
 ### Build the submission
 
 **Do not upload model weights, training checkpoints, datasets, or virtual environments.** Keep the selected reward and policy checkpoints locally; staff may request them separately if needed. The regular submission is limited to **50 MiB compressed and uncompressed**, with a **10 MiB limit per file**.
 
-After completing the three experiments, run the submission command below. A separate report is not required. The training/evaluation scripts automatically save the effective configurations as `logs/reward_model_config.yaml`, `logs/rlhf_config.yaml`, and `logs/evaluation_config.yaml`. These include the seed and resolved command-line overrides. Use the default output directories for submission.
+After completing the three experiments, run the submission command below. The training/evaluation scripts automatically save the effective configurations as `logs/reward_model_config.yaml`, `logs/rlhf_config.yaml`, and `logs/evaluation_config.yaml`. These include the seed and resolved command-line overrides. Use the default output directories for submission.
 
 ```bash
 python scripts/submission.py --andrew-id YOUR_ANDREW_ID
@@ -154,7 +152,7 @@ python scripts/submission.py --andrew-id YOUR_ANDREW_ID
 
 You may optionally attach notes with `--report report.md` (or PDF) and exact commands with `--commands commands.txt`.
 
-The script creates `assignment7_YOUR_ANDREW_ID.zip`. Missing experiment evidence stops packaging and identifies the missing file. The script also runs the public student self-check and includes its JSON feedback. Failed implementation tests still allow submission for partial credit; setup errors stop packaging. These checks do not assign course points. The script never deletes local checkpoints or overwrites an existing archive; use `--output another_name.zip` for a new archive.
+The script creates `assignment7_YOUR_ANDREW_ID.zip`. Missing experiment evidence stops packaging and identifies the missing file. The script also runs the public student self-check and includes its JSON feedback. You can package a submission with failed implementation tests. Resolve setup errors before packaging. The script never deletes local checkpoints or overwrites an existing archive; use `--output another_name.zip` for a new archive.
 
 The archive includes only:
 

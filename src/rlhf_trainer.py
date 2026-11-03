@@ -446,7 +446,7 @@ class VERLTrainer:
         attention_mask: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Compute simplified one-step TD advantages (legacy method name).
+        Compute one-step TD advantages.
         
         Args:
             rewards: Reward values
@@ -457,7 +457,7 @@ class VERLTrainer:
             Tuple of (advantages, returns)
         """
         # BEGIN ASSIGN7_2_1
-        # TODO: Implement the original scaffold's simplified one-step TD estimate.
+        # TODO: Implement the one-step TD estimate.
         # values[:, t] predicts the value before action token t+1.
         # Put the sequence reward on the last valid response state; zero elsewhere.
         # target[t] = reward[t] + gamma * next_valid * values[t+1]
