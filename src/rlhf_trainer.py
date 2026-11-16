@@ -692,6 +692,7 @@ def create_rlhf_trainer(
     # Load tokenizer and model
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.padding_side = "left"
+    tokenizer.truncation_side = "left"
     policy_model = AutoModelForCausalLM.from_pretrained(model_name)
     
     # Ensure pad token is set
