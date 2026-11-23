@@ -20,6 +20,7 @@ from src.config import AssignmentConfig, get_config, load_config_from_file, save
 from src.reward_model import create_reward_model, RewardModelTrainer, save_reward_model, load_reward_model
 from src.utils import (
     load_json_data, 
+    save_json_data,
     split_data, 
     setup_logging, 
     set_seed, 
@@ -352,6 +353,10 @@ def train_reward_model(config: AssignmentConfig):
     
     metrics_tracker.save_metrics(
         os.path.join(config.system.logs_dir, "reward_model_metrics.json")
+    )
+    save_json_data(
+        test_metrics,
+        os.path.join(config.system.logs_dir, "reward_model_test_metrics.json")
     )
     
     plot_training_curves(
